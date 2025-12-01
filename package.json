@@ -1,7 +1,10 @@
 {
-  "name": "amb-nostr-converter",
+  "name": "@edufeed-org/amb-nostr-converter",
   "version": "0.0.1",
-  "description": "Bidirectional converter between AMB (Application Profile for Learning Resources) metadata and Nostr events",
+  "description": "Bidirectional converter between AMB (Application Profile for Learning Resources) metadata and Edufeed Nostr events (30142)",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/types/index.d.ts",
