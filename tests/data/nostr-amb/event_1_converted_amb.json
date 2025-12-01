@@ -1,0 +1,42 @@
+{
+  "@context": [
+    "https://w3id.org/kim/amb/context.jsonld",
+    {
+      "@language": "de"
+    }
+  ],
+  "name": "Pythagorean Theorem Video",
+  "id": "https://oersi.org/resources/example123",
+  "image": "https://www.tutory.de/worksheet/fbbadf1a-145a-463d-9a43-1ae9965c86b9.jpg?width=1000",
+  "type": [
+    "LearningResource"
+  ],
+  "creator": [
+    {
+      "name": "HerunterS",
+      "type": "Person"
+    }
+  ],
+  "description": "An introductory video",
+  "about": [
+    {
+      "id": "http://w3id.org/kim/schulfaecher/s1017",
+      "prefLabel": {
+        "de": "Mathematik",
+        "en": "Mathematics"
+      },
+      "type": "Concept"
+    }
+  ],
+  "keywords": [
+    "Pythagoras",
+    "Geometrie"
+  ],
+  "dateCreated": "2019-07-02",
+  "inLanguage": [
+    "de"
+  ],
+  "license": {
+    "id": "https://creativecommons.org/licenses/by/4.0/"
+  }
+}

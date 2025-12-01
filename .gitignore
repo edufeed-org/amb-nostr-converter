@@ -29,6 +29,7 @@ memory-bank
 .clinerules
 
 data/
+!tests/data/
 
 #i18n
 project.inlang

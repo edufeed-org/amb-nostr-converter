@@ -1,0 +1,66 @@
+{
+  "kind": 30142,
+  "id": "d441b0db0a881c4ffac46e03c01f15263274c66a6185f0a09db7a7d1cefef338",
+  "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "created_at": 1763647999,
+  "tags": [
+    [
+      "d",
+      "oersi.org/resources/example123"
+    ],
+    [
+      "type",
+      "LearningResource"
+    ],
+    [
+      "name",
+      "Pythagorean Theorem Video"
+    ],
+    [
+      "description",
+      "An introductory video"
+    ],
+    [
+      "about:id",
+      "http://w3id.org/kim/schulfaecher/s1017"
+    ],
+    [
+      "about:prefLabel:de",
+      "Mathematik"
+    ],
+    [
+      "about:type",
+      "Concept"
+    ],
+    [
+      "about:id",
+      "http://w3id.org/kim/schulfaecher/s1017"
+    ],
+    [
+      "about:prefLabel:en",
+      "Mathematics"
+    ],
+    [
+      "about:type",
+      "Concept"
+    ],
+    [
+      "t",
+      "Pythagoras"
+    ],
+    [
+      "t",
+      "Geometrie"
+    ],
+    [
+      "inLanguage",
+      "de"
+    ],
+    [
+      "license:id",
+      "https://creativecommons.org/licenses/by/4.0/"
+    ]
+  ],
+  "content": "",
+  "sig": "ad878940e3e348ef3df8492c13015bf67fe2edda2440597ca29c85eaafc42be7c4976035c2acd1110e9b5e5aaf9d193da9fed45ca41f280cda977ccc25e93bd3"
+}
