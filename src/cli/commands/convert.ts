@@ -35,6 +35,7 @@ interface ConvertCommandOptions {
   tags?: boolean;
   nsec?: string;
   privateKey?: string;
+  relay?: string[];
 }
 
 /**
@@ -77,6 +78,11 @@ async function executeConvert(
     // Use derived pubkey if signing
     if (derivedPubkey) {
       conversionOptions.pubkey = derivedPubkey;
+    }
+    
+    // Add relay hints if provided
+    if (options.relay && options.relay.length > 0) {
+      conversionOptions.relayHints = options.relay;
     }
 
     let result: any;
@@ -183,6 +189,7 @@ export function createConvertCommand(): Command {
     .option('--tags', 'Output only the tags array', false)
     .option('--nsec <key>', 'Sign event with nsec (bech32 format private key)')
     .option('--private-key <key>', 'Sign event with hex private key')
+    .option('-r, --relay <url...>', 'Add relay hint(s) to the event (can specify multiple)')
     .action(async (directionStr: string, inputFile: string | undefined, options: ConvertCommandOptions) => {
       try {
         const direction = parseDirection(directionStr);

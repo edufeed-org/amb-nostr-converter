@@ -250,6 +250,13 @@ export function ambToNostr(
       tags.push(createTag('image', ambResource.image));
     }
 
+    // Add relay hints (NIP-65 style 'r' tags)
+    if (options.relayHints && options.relayHints.length > 0) {
+      options.relayHints.forEach(relay => {
+        tags.push(createTag('r', relay));
+      });
+    }
+
     // Add relationships if requested (using colon-delimited tags)
     if (options.includeRelationships !== false) {
       // hasPart relationships

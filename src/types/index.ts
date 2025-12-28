@@ -20,6 +20,9 @@ export interface ConversionOptions {
   
   // Whether to generate deterministic event IDs based on AMB IDs
   deterministicIds?: boolean;
+  
+  // Relay hints to include in the event (NIP-65 style 'r' tags)
+  relayHints?: string[];
 }
 
 /**

@@ -12,8 +12,25 @@ You can use it as a library or a CLI-Tool
 
 ## Installation
 
+### From GitHub Packages
+
+This package is published to GitHub Packages and requires authentication:
+
 ```bash
-npm install amb-nostr-converter
+npm install @edufeed-org/amb-nostr-converter --registry https://npm.pkg.github.com/edufeed-org
+```
+
+**Authentication Setup:**
+You'll need a GitHub Personal Access Token (PAT) with `read:packages` scope. Set it in your `.npmrc`:
+
+```
+registry=https://npm.pkg.github.com/edufeed-org
+//npm.pkg.github.com/:_authToken=YOUR_PAT_HERE
+```
+
+Or authenticate with npm login:
+```bash
+npm login --registry https://npm.pkg.github.com/edufeed-org
 ```
 
 ## Quick Start
@@ -53,15 +70,30 @@ if (result.success) {
 
 ### As a CLI Tool
 
+After installation, you can use the `amb-convert` command directly if installed globally, or via `npx` if installed locally:
+
+**Convert AMB to Nostr:**
 ```bash
-# Convert AMB to Nostr
-amb-convert amb:nostr input.json -o output.json
+# Using npx (works with local or global installation)
+npx amb-convert amb:nostr your_course.json -o nostr_event.json
 
-# Convert Nostr to AMB
-amb-convert nostr:amb event.json -o recovered_amb.json
+# Or directly if installed globally (-g flag)
+amb-convert amb:nostr your_course.json -o nostr_event.json
+```
 
-# Pretty-print the output
-amb-convert amb:nostr input.json -p
+**Convert Nostr back to AMB:**
+```bash
+npx amb-convert nostr:amb nostr_event.json -o recovered_amb.json
+```
+
+**Pretty-print output and chain with other tools:**
+```bash
+npx amb-convert amb:nostr course.json -p | jq .tags
+```
+
+**Get help:**
+```bash
+npx amb-convert --help
 ```
 
 ## CLI Reference
