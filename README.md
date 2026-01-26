@@ -12,25 +12,18 @@ You can use it as a library or a CLI-Tool
 
 ## Installation
 
-### From GitHub Packages
-
-This package is published to GitHub Packages and requires authentication:
-
 ```bash
-npm install @edufeed-org/amb-nostr-converter --registry https://npm.pkg.github.com/edufeed-org
+npm install amb-nostr-converter --registry=https://git.edufeed.org/api/packages/edufeed/npm/
 ```
 
-**Authentication Setup:**
-You'll need a GitHub Personal Access Token (PAT) with `read:packages` scope. Set it in your `.npmrc`:
-
+Or add to your `.npmrc`:
 ```
-registry=https://npm.pkg.github.com/edufeed-org
-//npm.pkg.github.com/:_authToken=YOUR_PAT_HERE
+registry=https://git.edufeed.org/api/packages/edufeed/npm/
 ```
 
-Or authenticate with npm login:
+Then install normally:
 ```bash
-npm login --registry https://npm.pkg.github.com/edufeed-org
+npm install amb-nostr-converter
 ```
 
 ## Quick Start
