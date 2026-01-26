@@ -55,11 +55,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/edufeed-org/amb-nostr-converter.git"
+    "url": "ssh://git@git.edufeed.org:2222/edufeed/amb-nostr-converter.git"
   },
-  "homepage": "https://github.com/edufeed-org/amb-nostr-converter#readme",
+  "homepage": "https://git.edufeed.org/edufeed/amb-nostr-converter",
   "bugs": {
-    "url": "https://github.com/edufeed-org/amb-nostr-converter/issues"
+    "url": "https://git.edufeed.org/edufeed/amb-nostr-converter/issues"
   },
   "engines": {
     "node": ">=20.0.0"
