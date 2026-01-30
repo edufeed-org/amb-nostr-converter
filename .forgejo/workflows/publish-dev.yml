@@ -1,0 +1,31 @@
+name: Publish Dev Build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      - name: Set dev version
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          npm version "0.0.0-${SHORT_SHA}" --no-git-tag-version
+
+      - name: Configure registry auth
+        run: |
+          npm config set -- '//git.edufeed.org/api/packages/edufeed/npm/:_authToken' "${{ secrets.REGISTRY_TOKEN }}"
+
+      - name: Publish with dev tag
+        run: npm publish --tag dev --registry=https://git.edufeed.org/api/packages/edufeed/npm/
