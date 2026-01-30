@@ -16,9 +16,9 @@ Usable as a library or CLI tool.
 npm install amb-nostr-converter --registry=https://git.edufeed.org/api/packages/edufeed/npm/
 ```
 
-Or add to your `.npmrc`:
-```
-registry=https://git.edufeed.org/api/packages/edufeed/npm/
+For the latest development build (published on every push to main):
+```bash
+npm install amb-nostr-converter@dev --registry=https://git.edufeed.org/api/packages/edufeed/npm/
 ```
 
 ## Quick Start
