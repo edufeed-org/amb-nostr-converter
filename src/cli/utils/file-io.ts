@@ -57,6 +57,22 @@ export function parseJSON(data: string): any {
 }
 
 /**
+ * Parse JSONL data (one JSON object per line)
+ */
+export function parseJSONLines(data: string): any[] {
+  const lines = data.split('\n').filter(line => line.trim() !== '');
+  return lines.map((line, index) => {
+    try {
+      return JSON.parse(line);
+    } catch (error) {
+      throw new Error(
+        `Invalid JSON on line ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  });
+}
+
+/**
  * Format JSON data for output
  */
 export function formatJSON(data: any, pretty: boolean = false): string {

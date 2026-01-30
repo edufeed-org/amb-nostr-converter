@@ -170,9 +170,14 @@ function unflattenTags(
     const value = reconstructProperty(baseKey, relatedTags);
     if (value !== undefined) {
       // Special cases: these fields must always be arrays in AMB spec
-      const arrayFields = ['type', 'inLanguage', 'about', 'creator', 'contributor', 
-                          'learningResourceType', 'audience', 'publisher', 'funder'];
-      
+      const arrayFields = [
+        'type', 'inLanguage', 'about', 'creator', 'contributor',
+        'learningResourceType', 'audience', 'publisher', 'funder',
+        'educationalLevel', 'teaches', 'assesses', 'competencyRequired',
+        'encoding', 'caption', 'hasPart', 'isPartOf', 'isBasedOn',
+        'mainEntityOfPage'
+      ];
+
       if (arrayFields.includes(baseKey)) {
         result[baseKey] = Array.isArray(value) ? value : [value];
       } else {
@@ -181,7 +186,38 @@ function unflattenTags(
     }
   }
 
+  // Post-process: normalize nested properties within relationship references
+  // In AMB spec, relationship refs (hasPart, isPartOf, isBasedOn) have:
+  //   - type: always an array (e.g., ["LearningResource"])
+  //   - creator: always an array (e.g., [{ name: "...", type: "Person" }])
+  const relationshipFields = ['hasPart', 'isPartOf', 'isBasedOn'];
+  for (const field of relationshipFields) {
+    if (result[field] && Array.isArray(result[field])) {
+      result[field] = result[field].map((ref: any) => normalizeRelationshipRef(ref));
+    }
+  }
+
   return result;
+}
+
+/**
+ * Normalize a relationship reference object
+ * Ensures type and creator are arrays as required by AMB spec
+ */
+function normalizeRelationshipRef(ref: any): any {
+  if (!ref || typeof ref !== 'object') return ref;
+
+  // type must be an array
+  if (ref.type !== undefined && !Array.isArray(ref.type)) {
+    ref.type = [ref.type];
+  }
+
+  // creator must be an array
+  if (ref.creator !== undefined && !Array.isArray(ref.creator)) {
+    ref.creator = [ref.creator];
+  }
+
+  return ref;
 }
 
 /**
@@ -217,6 +253,7 @@ function reconstructNestedObjects(
   // Group tags into object instances
   const objects: any[] = [];
   let currentObject: any = {};
+  let lastKeyAtTargetLevel: string | null = null;
 
   for (const tag of tags) {
     const parts = tag.key.split(':');
@@ -238,17 +275,26 @@ function reconstructNestedObjects(
     }
 
     // BOUNDARY DETECTION: Check if we should start a new object
-    // Two-tier strategy:
+    // Three-tier strategy:
     // 1. Priority: 'id' property signals a new object (semantic boundary)
-    // 2. Fallback: Property collision (property already exists at this level)
+    // 2. 'type' collision: If the previous tag at this level was also 'type',
+    //    collect into array (multi-type like ["LearningResource", "Course"]).
+    //    If non-type tags appeared in between, it's a new object boundary.
+    // 3. Fallback: Any other property collision means new object
     let shouldStartNewObject = false;
 
     if (Object.keys(currentObject).length > 0) {
       if (finalKey === 'id' && target.hasOwnProperty('id')) {
         // Primary signal: 'id' reappearance means new object
         shouldStartNewObject = true;
+      } else if (finalKey === 'type' && target.hasOwnProperty('type')) {
+        // 'type' collision: boundary only if non-type tags appeared since last 'type'
+        if (lastKeyAtTargetLevel !== 'type') {
+          shouldStartNewObject = true;
+        }
+        // Otherwise: consecutive type tags → collect into array below
       } else if (target.hasOwnProperty(finalKey)) {
-        // Fallback: Property collision
+        // Fallback: Property collision means new object
         shouldStartNewObject = true;
       }
     }
@@ -256,7 +302,8 @@ function reconstructNestedObjects(
     if (shouldStartNewObject) {
       objects.push(currentObject);
       currentObject = {};
-      
+      lastKeyAtTargetLevel = null;
+
       // Re-navigate to target in the new object
       target = currentObject;
       for (let i = 1; i < parts.length - 1; i++) {
@@ -270,30 +317,47 @@ function reconstructNestedObjects(
       }
     }
 
-    // Handle special cases like prefLabel with inLanguage
-    if (finalKey === 'prefLabel') {
-      // Look for corresponding inLanguage tag
-      const currentIndex = tags.indexOf(tag);
-      const langTag = tags.find((t, idx) => {
-        return (
-          t.key === parts.slice(0, -1).concat('inLanguage').join(':') &&
-          idx > currentIndex - 2 &&
-          idx < currentIndex + 2
-        );
-      });
+    // Handle multi-language prefLabel (e.g., about:prefLabel:de, about:prefLabel:en)
+    // The spec uses prefLabel:<lang> format where lang is embedded in the key
+    const secondToLastPart = parts.length >= 2 ? parts[parts.length - 2] : null;
 
-      if (langTag && langTag.values[0]) {
-        const lang = langTag.values[0];
-        target[finalKey] = { [lang]: value };
-      } else {
-        target[finalKey] = value;
+    if (secondToLastPart === 'prefLabel') {
+      // finalKey is the language code (e.g., 'de', 'en')
+      const langCode = finalKey;
+
+      // Navigate to parent of prefLabel
+      let prefLabelTarget = currentObject;
+      for (let i = 1; i < parts.length - 2; i++) {
+        const part = parts[i];
+        if (part) {
+          if (!prefLabelTarget[part]) {
+            prefLabelTarget[part] = {};
+          }
+          prefLabelTarget = prefLabelTarget[part];
+        }
       }
-    } else if (finalKey === 'inLanguage' && target.prefLabel) {
-      // Already handled in prefLabel case
-      continue;
+
+      // Initialize or extend prefLabel object
+      if (!prefLabelTarget.prefLabel) {
+        prefLabelTarget.prefLabel = {};
+      }
+      prefLabelTarget.prefLabel[langCode] = value;
+    } else if (finalKey === 'prefLabel') {
+      // Fallback: simple prefLabel without language code
+      target[finalKey] = value;
+    } else if (finalKey === 'type' && target.hasOwnProperty('type')) {
+      // Collect multiple type values into an array
+      if (Array.isArray(target.type)) {
+        target.type.push(value);
+      } else {
+        target.type = [target.type, value];
+      }
     } else {
       target[finalKey] = value;
     }
+
+    // Track last key at this nesting level for boundary detection
+    lastKeyAtTargetLevel = finalKey;
   }
 
   // Add the last object

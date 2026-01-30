@@ -121,8 +121,23 @@ export type EducationalTagType =
   | 'hasPart:name'                // Child resource name
   | 'hasPart:type'                // Child resource type
   
+  // Competency properties (with colon-delimited nesting)
+  | 'teaches:id'                  // Competency/skill taught ID
+  | 'teaches:prefLabel'           // Competency label
+  | 'teaches:type'                // Concept type
+  | 'assesses:id'                 // Competency assessed ID
+  | 'assesses:prefLabel'          // Assessment label
+  | 'assesses:type'               // Concept type
+  | 'competencyRequired:id'       // Required competency ID
+  | 'competencyRequired:prefLabel' // Competency label
+  | 'competencyRequired:type'     // Concept type
+  | 'interactivityType:id'        // Interactivity type ID
+  | 'interactivityType:prefLabel' // Interactivity label
+  | 'interactivityType:type'      // Concept type
+
   // Technical
   | 'duration'                    // ISO8601 duration
+  | 'encoding:id'                 // Encoding ID
   | 'encoding:type'               // MediaObject
   | 'encoding:contentUrl'         // Media URL
   | 'encoding:embedUrl'           // Embed URL
@@ -130,8 +145,22 @@ export type EducationalTagType =
   | 'encoding:contentSize'        // Size in bytes
   | 'encoding:sha256'             // SHA256 hash
   | 'encoding:bitrate'            // Bitrate in kbps
-  
+  | 'encoding:inLanguage'         // Encoding language
+
+  // Trailer (MediaObject)
+  | 'trailer:id'                  // Trailer ID
+  | 'trailer:type'                // MediaObject type
+  | 'trailer:contentUrl'          // Trailer URL
+  | 'trailer:encodingFormat'      // Trailer format
+  | 'trailer:sha256'              // Trailer hash
+
+  // Caption (MediaObject array)
+  | 'caption:id'                  // Caption ID
+  | 'caption:encodingFormat'      // Caption format
+  | 'caption:inLanguage'          // Caption language
+
   // Meta-metadata
+  | 'mainEntityOfPage'            // Simple URL reference
   | 'mainEntityOfPage:id'         // WebPage ID
   | 'mainEntityOfPage:type'       // "WebContent"
   | 'mainEntityOfPage:provider:id' // Provider ID
@@ -160,7 +189,8 @@ export function createTag(
   type: NostrTagType | EducationalTagType,
   ...values: string[]
 ): NostrTag {
-  return [type, ...values];
+  // Safety: coerce non-string values to strings to prevent nostr-tools validation errors
+  return [type, ...values.map(v => typeof v === 'string' ? v : String(v))];
 }
 
 /**

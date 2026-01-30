@@ -181,6 +181,23 @@ amb-convert amb:nostr input.json --tags
 | `-V, --version` | Display version number | Both | `-V` |
 | `-h, --help` | Display help information | Both | `-h` |
 
+### Batch Processing (JSONL)
+
+The CLI supports JSONL input (one JSON object per line) for batch conversion:
+
+```bash
+# Convert all objects in a JSONL file
+cat amb-objects.jsonl | amb-convert amb:nostr
+
+# Pretty-print each result (separated by blank lines)
+cat amb-objects.jsonl | amb-convert amb:nostr -p
+
+# Sign all events and write to output file
+cat amb-objects.jsonl | amb-convert amb:nostr --nsec $NOSTR_NSEC -o events.jsonl
+```
+
+JSONL is auto-detected — single JSON files continue to work as before. Errors on individual lines are reported with line numbers and don't stop processing of remaining lines.
+
 ### CLI Examples
 
 ```bash
@@ -500,6 +517,15 @@ npm run build
 npm link                # Create global symlink
 amb-convert amb:nostr tests/data/amb/example_1_course.json --output /tmp/output.json
 npm unlink -g amb-nostr-converter  # When done
+```
+
+**NixOS (npm link not available)**
+```bash
+# Run directly with node
+node /path/to/amb-nostr-converter/dist/cli/index.js amb:nostr input.json -p
+
+# Or create a shell alias in ~/.bashrc or ~/.zshrc
+alias amb-convert='node /path/to/amb-nostr-converter/dist/cli/index.js'
 ```
 
 ## Related Projects

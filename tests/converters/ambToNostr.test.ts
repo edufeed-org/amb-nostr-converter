@@ -81,7 +81,7 @@ describe('ambToNostr', () => {
 
       const creatorNameTags = event.tags.filter(t => t[0] === 'creator:name');
       expect(creatorNameTags.length).toBeGreaterThan(0);
-      expect(creatorNameTags[0][1]).toBe('Dr. Jens Lechtenbörger');
+      expect(creatorNameTags[0][1]).toBe('Jens Lechtenbörger');
 
       const creatorIdTags = event.tags.filter(t => t[0] === 'creator:id');
       expect(creatorIdTags.length).toBeGreaterThan(0);
@@ -94,9 +94,9 @@ describe('ambToNostr', () => {
 
       const hashtagTags = event.tags.filter(t => t[0] === 't');
       expect(hashtagTags.length).toBe(3);
-      expect(hashtagTags.map(t => t[1])).toContain('computer science');
-      expect(hashtagTags.map(t => t[1])).toContain('operation systems');
-      expect(hashtagTags.map(t => t[1])).toContain('computer structures');
+      expect(hashtagTags.map(t => t[1])).toContain('Computer Science');
+      expect(hashtagTags.map(t => t[1])).toContain('Operation Systems');
+      expect(hashtagTags.map(t => t[1])).toContain('Computer Structures');
     });
 
     test('should include license information', () => {
@@ -183,12 +183,13 @@ describe('ambToNostr', () => {
       expect(languageTags[0][1]).toBe('en');
     });
 
-    test('should have empty content field per AMB spec', () => {
+    test('should have description in content field per AMB spec', () => {
       const result = ambToNostr(courseSample, options);
       const event = result.data!;
 
-      // Per AMB spec, content field must be empty - all data goes in tags
-      expect(event.content).toBe('');
+      // Per AMB spec, content SHOULD contain description for client compatibility
+      // The description tag is kept for relay queryability
+      expect(event.content).toBe(courseSample.description);
     });
   });
 
@@ -314,12 +315,12 @@ describe('ambToNostr', () => {
       expect(result.warnings![0]).toContain('default pubkey');
     });
 
-    test('should have empty content regardless of options', () => {
+    test('should have description in content regardless of options', () => {
       const result = ambToNostr(courseSample, options);
 
       expect(result.success).toBe(true);
-      // Content is always empty per AMB spec, regardless of options
-      expect(result.data!.content).toBe('');
+      // Content SHOULD contain description per AMB spec
+      expect(result.data!.content).toBe(courseSample.description);
     });
 
     test('should exclude relationships when option is set', () => {

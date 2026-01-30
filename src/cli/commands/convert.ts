@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { readInput, writeOutput, parseJSON, formatJSON } from '../utils/file-io.js';
+import { readInput, writeOutput, parseJSON, parseJSONLines, formatJSON } from '../utils/file-io.js';
 import { success, error as displayError, info } from '../utils/output.js';
 import { ambToNostr, nostrToAmb } from '../../converters/index.js';
 import { ConversionOptions } from '../../types/index.js';
@@ -58,12 +58,10 @@ async function executeConvert(
       throw new Error('Input is empty');
     }
     
-    const inputJson = parseJSON(inputData);
-
     // Handle private key if provided (only for amb:nostr direction)
     let privateKeyHex: string | undefined;
     let derivedPubkey: string | undefined;
-    
+
     if (direction === 'amb:nostr' && (options.nsec || options.privateKey)) {
       const keyInput = options.nsec || options.privateKey!;
       privateKeyHex = parsePrivateKey(keyInput);
@@ -73,82 +71,100 @@ async function executeConvert(
 
     // Prepare conversion options
     const conversionOptions: ConversionOptions = {};
-    
+
     // Use derived pubkey if signing
     if (derivedPubkey) {
       conversionOptions.pubkey = derivedPubkey;
     }
 
-    let result: any;
-    let outputData: string;
+    // Detect JSONL vs single JSON
+    let inputs: any[];
+    let isJsonl = false;
 
-    // Perform conversion based on direction
-    if (direction === 'amb:nostr') {
-      info('Converting AMB to Nostr...');
-      const conversionResult = ambToNostr(inputJson, conversionOptions);
-      
-      if (!conversionResult.success) {
-        throw new Error(conversionResult.error?.message || 'Conversion failed');
-      }
-      
-      // Display warnings if any
-      if (conversionResult.warnings && conversionResult.warnings.length > 0) {
-        conversionResult.warnings.forEach(warning => {
-          console.error(`⚠ Warning: ${warning}`);
-        });
-      }
-      
-      if (!conversionResult.data) {
-        throw new Error('Conversion succeeded but no data was returned');
-      }
-      
-      let event = conversionResult.data;
-      
-      // Sign the event if private key was provided
-      if (privateKeyHex) {
-        info('Signing event...');
-        event = signNostrEvent(event, privateKeyHex);
-        info(`Event ID: ${event.id}`);
-      }
-      
-      // Output based on --tags flag
-      if (options.tags) {
-        // Output only tags array
-        result = event.tags;
-      } else {
-        // Output full event
-        result = event;
-      }
-      
-      outputData = formatJSON(result, options.pretty);
-      
-    } else {
-      // nostr:amb direction
-      info('Converting Nostr to AMB...');
-      
-      // Signing options don't apply to nostr→amb conversion
+    try {
+      const singleJson = parseJSON(inputData);
+      inputs = [singleJson];
+    } catch {
+      // Single JSON parse failed — try JSONL
+      inputs = parseJSONLines(inputData);
+      isJsonl = true;
+    }
+
+    // Warn about inapplicable options for nostr:amb
+    if (direction === 'nostr:amb') {
       if (options.nsec || options.privateKey) {
         console.error('⚠ Warning: --nsec and --private-key options are ignored for nostr:amb conversion');
       }
-      
-      // --tags option doesn't apply to nostr→amb
       if (options.tags) {
         console.error('⚠ Warning: --tags option is ignored for nostr:amb conversion');
       }
-      
-      const conversionResult = nostrToAmb(inputJson);
-      
-      if (!conversionResult.success) {
-        throw new Error(conversionResult.error?.message || 'Conversion failed');
-      }
-      
-      if (!conversionResult.data) {
-        throw new Error('Conversion succeeded but no data was returned');
-      }
-      
-      result = conversionResult.data;
-      outputData = formatJSON(result, options.pretty);
     }
+
+    info(`Converting ${isJsonl ? `${inputs.length} objects` : '1 object'} ${direction === 'amb:nostr' ? 'AMB to Nostr' : 'Nostr to AMB'}...`);
+
+    const results: string[] = [];
+    let errorCount = 0;
+
+    for (let i = 0; i < inputs.length; i++) {
+      const inputJson = inputs[i];
+      const lineLabel = isJsonl ? ` (line ${i + 1})` : '';
+
+      try {
+        let result: any;
+
+        if (direction === 'amb:nostr') {
+          const conversionResult = ambToNostr(inputJson, conversionOptions);
+
+          if (!conversionResult.success) {
+            throw new Error(conversionResult.error?.message || 'Conversion failed');
+          }
+
+          if (conversionResult.warnings && conversionResult.warnings.length > 0) {
+            conversionResult.warnings.forEach(warning => {
+              console.error(`⚠ Warning${lineLabel}: ${warning}`);
+            });
+          }
+
+          if (!conversionResult.data) {
+            throw new Error('Conversion succeeded but no data was returned');
+          }
+
+          let event = conversionResult.data;
+
+          if (privateKeyHex) {
+            event = signNostrEvent(event, privateKeyHex);
+            info(`Event ID${lineLabel}: ${event.id}`);
+          }
+
+          result = options.tags ? event.tags : event;
+        } else {
+          const conversionResult = nostrToAmb(inputJson);
+
+          if (!conversionResult.success) {
+            throw new Error(conversionResult.error?.message || 'Conversion failed');
+          }
+
+          if (!conversionResult.data) {
+            throw new Error('Conversion succeeded but no data was returned');
+          }
+
+          result = conversionResult.data;
+        }
+
+        results.push(formatJSON(result, options.pretty));
+      } catch (err) {
+        errorCount++;
+        console.error(`✗ Error${lineLabel}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    }
+
+    if (results.length === 0) {
+      throw new Error('All conversions failed');
+    }
+
+    // Join results: pretty mode uses blank line separator, compact uses newline
+    const separator = options.pretty ? '\n\n' : '\n';
+    const outputData = results.join(separator);
 
     // Write output
     await writeOutput(outputData, options.output);

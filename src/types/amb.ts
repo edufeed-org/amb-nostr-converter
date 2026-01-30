@@ -37,6 +37,9 @@ export interface Person {
   honorificSuffix?: string;
   email?: string;
   affiliation?: Organization;
+  // Nostr-specific extensions for p tag support
+  nostrPubkey?: string;
+  relayHint?: string;
 }
 
 /**
@@ -48,6 +51,9 @@ export interface Organization {
   name: string;
   url?: string;
   email?: string;
+  // Nostr-specific extensions for p tag support
+  nostrPubkey?: string;
+  relayHint?: string;
 }
 
 /**
@@ -60,6 +66,30 @@ export interface License {
 }
 
 /**
+ * MediaObject for trailer, encoding, caption
+ */
+export interface MediaObject {
+  id?: string;
+  type?: 'MediaObject' | 'VideoObject' | 'AudioObject';
+  contentUrl?: string;
+  embedUrl?: string;
+  encodingFormat?: string;
+  sha256?: string;
+  inLanguage?: string;
+  contentSize?: string;
+  bitrate?: string;
+}
+
+/**
+ * FundingScheme for funder information
+ */
+export interface FundingScheme {
+  id?: string;
+  type: 'FundingScheme' | 'Organization';
+  name: string;
+}
+
+/**
  * Base interface for all AMB learning resources
  */
 export interface AmbLearningResourceBase extends AmbContext {
@@ -67,38 +97,66 @@ export interface AmbLearningResourceBase extends AmbContext {
   type: string[];
   name: string;
   creator?: Array<Person | Organization>;
+  contributor?: Array<Person | Organization>;
   description?: string;
   keywords?: string[];
   about?: Concept[];
-  
+
   // Access and licensing
   isAccessibleForFree?: boolean;
   conditionsOfAccess?: Concept;
   license?: License;
-  
+
   // Language and localization
   inLanguage?: string[];
-  
+
   // Educational metadata
   learningResourceType?: Concept[];
   audience?: Concept[];
   educationalLevel?: Concept[];
-  
+  teaches?: Concept[];
+  assesses?: Concept[];
+  competencyRequired?: Concept[];
+  interactivityType?: Concept;
+
   // Temporal information
   dateCreated?: string;
   datePublished?: string;
   dateModified?: string;
-  
+  duration?: string; // ISO8601 duration format (PnYnMnDTnHnMnS)
+
   // Publishing information
   publisher?: Array<Person | Organization>;
-  
+  funder?: Array<Person | Organization | FundingScheme>;
+
   // Media
   image?: string;
-  
+  trailer?: MediaObject;
+  encoding?: MediaObject[];
+  caption?: MediaObject[];
+
   // Relationships
   hasPart?: AmbLearningResourceReference[];
   isPartOf?: AmbLearningResourceReference[];
   isBasedOn?: AmbLearningResourceReference[];
+
+  // Source/canonical URL
+  mainEntityOfPage?: MainEntityOfPage[];
+}
+
+/**
+ * MainEntityOfPage - metadata about where the resource is described
+ */
+export interface MainEntityOfPage {
+  id: string;
+  type?: string;
+  provider?: {
+    id?: string;
+    name?: string;
+    type?: string;
+  };
+  dateCreated?: string;
+  dateModified?: string;
 }
 
 /**
@@ -109,7 +167,13 @@ export interface AmbLearningResourceReference {
   type?: string[];
   name?: string;
   creator?: Array<Person | Organization>;
-  license?: License;
+  license?: License | string;
+  // Nostr-specific: if this references a Nostr AMB event, provide event info for a tag
+  nostrEvent?: {
+    pubkey: string;
+    dTag: string;
+    relayHint?: string;
+  };
 }
 
 /**

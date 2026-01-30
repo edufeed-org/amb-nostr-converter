@@ -1,6 +1,6 @@
 {
   "name": "amb-nostr-converter",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Bidirectional converter between AMB (Application Profile for Learning Resources) metadata and Edufeed Nostr events (30142)",
   "publishConfig": {
     "registry": "https://git.edufeed.org/api/packages/edufeed/npm/"
@@ -55,7 +55,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "ssh://git@git.edufeed.org:2222/edufeed/amb-nostr-converter.git"
+    "url": "https://git.edufeed.org/edufeed/amb-nostr-converter.git"
   },
   "homepage": "https://git.edufeed.org/edufeed/amb-nostr-converter",
   "bugs": {
