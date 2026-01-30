@@ -28,7 +28,7 @@ This library provides **bidirectional conversion** between AMB (educational meta
 ```
 AMB (JSON-LD)  ──ambToNostr()──►  Nostr Event (kind 30142)
                                         │
-                                        │ content: "" (always empty)
+                                        │ content: description (or empty)
                                         │ tags: [...flattened metadata]
                                         ▼
 Nostr Event   ──nostrToAmb()──►  AMB (JSON-LD)
@@ -74,14 +74,13 @@ When reconstructing arrays of objects from flat tags, the converter uses a two-t
 
 Original tag order must be preserved for correct reconstruction.
 
-## Project Documentation
+### Non-Standard AMB Input Normalization
 
-The `memory-bank/` folder contains project documentation:
-- `projectbrief.md` - Core requirements
-- `activeContext.md` - Current work focus and recent changes
-- `progress.md` - What works, what's left, milestones
-- `techContext.md` - Technology stack and constraints
-- `systemPatterns.md` - Architecture and design patterns
+`ambToNostr()` gracefully handles non-standard AMB input from real-world sources (e.g. sitemap parsers):
+- `type` as `Concept[]` (objects with id/prefLabel) instead of `string[]` → normalized via `.id`
+- `license` as `Concept[]` array instead of `{ id: string }` → uses first entry
+
+These emit warnings but don't fail conversion.
 
 ## External Specifications
 
