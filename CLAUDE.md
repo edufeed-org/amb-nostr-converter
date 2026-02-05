@@ -36,7 +36,9 @@ Nostr Event   ──nostrToAmb()──►  AMB (JSON-LD)
 
 ### Critical Spec Requirement
 
-All metadata is encoded in tags using colon-delimited flattening. This is per the [AMB-NIP spec](https://github.com/edufeed-org/nips/blob/edufeed-amb/edufeed.md).
+All metadata is encoded in tags using colon-delimited flattening. This is per the [AMB-NIP spec](https://git.edufeed.org/edufeed/nips/src/branch/edufeed-amb/edufeed.md).
+
+- The AMB-NIP spec can also be found under this nostr naddr: `naddr1qvzqqqrcvypzp0wzr7fmrcktw4sgemxh5zsq5auh08vnvlwf0x9anusn7pkft0zgqy28wumn8ghj7un9d3shjtnyv9kh2uewd9hsqzm9v36kvet9vskkzmtzvjvrtf`
 
 ### Tag Flattening Pattern
 
@@ -85,4 +87,8 @@ These emit warnings but don't fail conversion.
 ## External Specifications
 
 - AMB spec: https://dini-ag-kim.github.io/amb/latest/
-- AMB-NIP (kind 30142): https://github.com/edufeed-org/nips/blob/edufeed-amb/edufeed.md
+- AMB-NIP (kind 30142): https://git.edufeed.org/edufeed/nips/src/branch/edufeed-amb/edufeed.md
+
+## MCPs 
+
+* use nostr mcp for resolving nostr addresses or other related nostr questions.

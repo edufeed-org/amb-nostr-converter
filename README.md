@@ -89,6 +89,8 @@ JSONL input (one JSON object per line) is auto-detected. Errors on individual li
 cat resources.jsonl | amb-convert amb:nostr --nsec $NOSTR_NSEC -o events.jsonl
 ```
 
+When converting multiple events, each event gets an incrementing `created_at` timestamp (base time + 1 second per event). This ensures relay clients that use cursor-based pagination on `created_at` can load all events correctly.
+
 ### Event Signing
 
 When `--nsec` or `--private-key` is provided (both accept nsec1 or hex format):
@@ -106,6 +108,7 @@ npm test
 
 ## Related Projects
 
+- [AMB Sitemap Parser](https://git.edufeed.org/edufeed/amb-sitemap-parser) - Parse sitemaps and extract AMB educational metadata from web pages
 - [AMB Specification](https://w3id.org/kim/amb/) - General Metadata Profile for Learning Resources
 - [AMB-NIP (kind 30142)](https://github.com/edufeed-org/nips/blob/edufeed-amb/edufeed.md) - Nostr event spec for AMB
 - [Nostr Protocol](https://github.com/nostr-protocol/nostr) - Notes and Other Stuff Transmitted by Relays

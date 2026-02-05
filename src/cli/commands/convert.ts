@@ -105,6 +105,10 @@ async function executeConvert(
     const results: string[] = [];
     let errorCount = 0;
 
+    // Use incrementing timestamps for bulk conversions to ensure unique created_at
+    // values, which prevents cursor-based pagination issues on relays.
+    const baseTimestamp = Math.floor(Date.now() / 1000);
+
     for (let i = 0; i < inputs.length; i++) {
       const inputJson = inputs[i];
       const lineLabel = isJsonl ? ` (line ${i + 1})` : '';
@@ -113,7 +117,10 @@ async function executeConvert(
         let result: any;
 
         if (direction === 'amb:nostr') {
-          const conversionResult = ambToNostr(inputJson, conversionOptions);
+          const itemOptions = inputs.length > 1
+            ? { ...conversionOptions, timestamp: baseTimestamp + i }
+            : conversionOptions;
+          const conversionResult = ambToNostr(inputJson, itemOptions);
 
           if (!conversionResult.success) {
             throw new Error(conversionResult.error?.message || 'Conversion failed');
