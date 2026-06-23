@@ -429,7 +429,9 @@ function reconstructExt(
   const work: Record<string, Record<string, { kind: 'concept' | 'scalar'; items: any[] }>> = {};
 
   for (const tag of extTags) {
-    const parsed = parseExtKey(tag[0]);
+    const key = tag[0];
+    if (typeof key !== 'string') continue;
+    const parsed = parseExtKey(key);
     if (!parsed) continue;
     const { ns, facet, sub, legacy } = parsed;
     if (legacy) legacyNamespaces.add(ns);
@@ -463,11 +465,13 @@ function reconstructExt(
 
   const out: Record<string, Record<string, any>> = {};
   for (const ns of Object.keys(work)) {
-    for (const facet of Object.keys(work[ns])) {
-      const f = work[ns][facet];
-      if (f.items.length === 0) continue;
+    const nsWork = work[ns];
+    if (!nsWork) continue;
+    for (const facet of Object.keys(nsWork)) {
+      const f = nsWork[facet];
+      if (!f || f.items.length === 0) continue;
       if (!out[ns]) out[ns] = {};
-      out[ns][facet] = f.items;
+      out[ns]![facet] = f.items;
     }
   }
 
