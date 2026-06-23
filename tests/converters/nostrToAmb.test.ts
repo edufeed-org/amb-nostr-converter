@@ -469,3 +469,31 @@ describe('p tag reverse mapping', () => {
     expect(result.data!.contributor).toBeUndefined();
   });
 });
+
+describe('a tag reverse mapping', () => {
+  test('maps a tag with hasPart role to nostr naddr id', () => {
+    const pub = 'd'.repeat(64);
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'],
+             ['a', `30142:${pub}:child-d`, 'wss://relay.example', 'hasPart']] };
+    const result = nostrToAmb(ev);
+    const parts = (result.data as any).hasPart;
+    expect(parts).toHaveLength(1);
+    expect(parts[0].type).toBe('LearningResource');
+    const decoded = nip19.decode(parts[0].id.replace('nostr:', ''));
+    expect(decoded.type).toBe('naddr');
+    expect((decoded.data as any).identifier).toBe('child-d');
+    expect((decoded.data as any).pubkey).toBe(pub);
+    expect((decoded.data as any).kind).toBe(30142);
+  });
+
+  test('ignores a tags with form role', () => {
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'],
+             ['a', '30168:e'.repeat(1) + '0'.repeat(63) + ':formd', 'wss://r', 'form']] };
+    const result = nostrToAmb(ev);
+    expect((result.data as any).isBasedOn).toBeUndefined();
+    expect((result.data as any).isPartOf).toBeUndefined();
+    expect((result.data as any).hasPart).toBeUndefined();
+  });
+});

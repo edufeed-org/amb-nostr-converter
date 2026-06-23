@@ -70,6 +70,9 @@ export function nostrToAmb(
     // C2: Nostr-native creator/contributor (p tags)
     applyPersonTags(amb, pTags);
 
+    // C3: Nostr-native relations (a tags)
+    applyRelationTags(amb, aTags);
+
     // Validate required fields
     if (!amb.id) {
       return { success: false, error: new ConversionError('Missing required field: id (d tag)', ConversionErrorCode.MISSING_REQUIRED_FIELD) };
@@ -508,5 +511,38 @@ function applyPersonTags(amb: any, pTags: string[][]): void {
     const person = { id: `nostr:${nprofile}`, type: 'Person' };
     if (!Array.isArray(amb[role])) amb[role] = [];
     amb[role].push(person);
+  }
+}
+
+/**
+ * Map ["a", "30142:<pub>:<d>", <hint?>, <role>] tags (role isBasedOn|isPartOf|
+ * hasPart) to AMB relation objects { id: "nostr:<naddr>", type: "LearningResource" }.
+ * Role 'form' and unknown roles are ignored.
+ */
+function applyRelationTags(amb: any, aTags: string[][]): void {
+  const RELATION_ROLES = new Set(['isBasedOn', 'isPartOf', 'hasPart']);
+  for (const tag of aTags) {
+    const coord = tag[1];
+    const role = tag[3];
+    if (!coord || !role || !RELATION_ROLES.has(role)) continue;
+    const parts = coord.split(':');
+    if (parts.length < 3) continue;
+    const rawKind = parts[0];
+    const pubkey = parts[1];
+    if (!rawKind || !pubkey) continue;
+    const kind = parseInt(rawKind, 10);
+    const identifier = parts.slice(2).join(':');
+    if (!Number.isFinite(kind)) continue;
+    const hint = tag[2];
+    const relays = hint ? [hint] : [];
+    let naddr: string;
+    try {
+      naddr = nip19.naddrEncode({ identifier, pubkey, kind, relays });
+    } catch {
+      continue;
+    }
+    const relation = { id: `nostr:${naddr}`, type: 'LearningResource' };
+    if (!Array.isArray(amb[role])) amb[role] = [];
+    amb[role].push(relation);
   }
 }
