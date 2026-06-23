@@ -6,3 +6,4 @@
 export * from './types/index.js';
 export * from './converters/index.js';
 export * from './validators/index.js';
+export * from './profiles/index.js';
