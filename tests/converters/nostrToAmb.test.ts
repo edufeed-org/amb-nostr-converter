@@ -497,3 +497,19 @@ describe('a tag reverse mapping', () => {
     expect((result.data as any).hasPart).toBeUndefined();
   });
 });
+
+describe('content to description', () => {
+  test('non-empty content overrides description tag', () => {
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: 'From content field',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'], ['description', 'From tag']] };
+    const result = nostrToAmb(ev);
+    expect(result.data!.description).toBe('From content field');
+  });
+
+  test('empty content falls back to description tag', () => {
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'], ['description', 'From tag']] };
+    const result = nostrToAmb(ev);
+    expect(result.data!.description).toBe('From tag');
+  });
+});

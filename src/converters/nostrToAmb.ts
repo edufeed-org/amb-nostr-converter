@@ -73,6 +73,11 @@ export function nostrToAmb(
     // C3: Nostr-native relations (a tags)
     applyRelationTags(amb, aTags);
 
+    // C4: content is the preferred source for description
+    if (typeof event.content === 'string' && event.content.length > 0) {
+      amb.description = event.content;
+    }
+
     // Validate required fields
     if (!amb.id) {
       return { success: false, error: new ConversionError('Missing required field: id (d tag)', ConversionErrorCode.MISSING_REQUIRED_FIELD) };
