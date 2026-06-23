@@ -27,6 +27,11 @@ export interface Concept {
 }
 
 /**
+ * An extension facet value: either controlled-vocabulary concepts or bare scalars.
+ */
+export type ExtFacet = Concept[] | string[];
+
+/**
  * Person entity (creator, contributor, etc.)
  */
 export interface Person {
@@ -142,6 +147,9 @@ export interface AmbLearningResourceBase extends AmbContext {
 
   // Source/canonical URL
   mainEntityOfPage?: MainEntityOfPage[];
+
+  // Extension properties (ext namespace). Shape: ext[ns][facet] = Concept[] | string[]
+  ext?: Record<string, Record<string, ExtFacet>>;
 }
 
 /**

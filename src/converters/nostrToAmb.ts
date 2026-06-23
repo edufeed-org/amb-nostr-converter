@@ -2,6 +2,7 @@
  * Converter for Nostr events to AMB metadata
  */
 
+import { nip19 } from 'nostr-tools';
 import {
   NostrEvent,
   AmbLearningResource,
@@ -39,44 +40,58 @@ export function nostrToAmb(
       };
     }
 
-    // Unflatten tags to AMB structure
-    const amb = unflattenTags(event.tags, options?.defaultLanguage || 'de');
+    const warnings: string[] = [];
+    const defaultLanguage = options?.defaultLanguage || 'de';
+
+    // Partition tags: r dropped (C5), p/a held for native mapping, ext routed out,
+    // everything else is AMB-core for the generic unflattener.
+    const coreTags: string[][] = [];
+    const extTags: string[][] = [];
+    const pTags: string[][] = [];
+    const aTags: string[][] = [];
+    for (const tag of event.tags) {
+      const key = tag[0];
+      if (key === 'r') continue;
+      if (key === 'p') { pTags.push(tag); continue; }
+      if (key === 'a') { aTags.push(tag); continue; }
+      if (typeof key === 'string' && (key.startsWith('ext:') || key.startsWith('ekw:'))) {
+        extTags.push(tag); continue;
+      }
+      coreTags.push(tag);
+    }
+
+    // Unflatten AMB-core tags to AMB structure
+    const amb: any = unflattenTags(coreTags, defaultLanguage);
+
+    // C1/C6: extension namespace reconstruction
+    const ext = reconstructExt(extTags, warnings);
+    if (ext) amb.ext = ext;
+
+    // C2: Nostr-native creator/contributor (p tags)
+    applyPersonTags(amb, pTags);
+
+    // C3: Nostr-native relations (a tags)
+    applyRelationTags(amb, aTags);
+
+    // C4: content is the preferred source for description
+    if (typeof event.content === 'string' && event.content.length > 0) {
+      amb.description = event.content;
+    }
 
     // Validate required fields
     if (!amb.id) {
-      return {
-        success: false,
-        error: new ConversionError(
-          'Missing required field: id (d tag)',
-          ConversionErrorCode.MISSING_REQUIRED_FIELD
-        ),
-      };
+      return { success: false, error: new ConversionError('Missing required field: id (d tag)', ConversionErrorCode.MISSING_REQUIRED_FIELD) };
     }
-
     if (!amb.name) {
-      return {
-        success: false,
-        error: new ConversionError(
-          'Missing required field: name',
-          ConversionErrorCode.MISSING_REQUIRED_FIELD
-        ),
-      };
+      return { success: false, error: new ConversionError('Missing required field: name', ConversionErrorCode.MISSING_REQUIRED_FIELD) };
     }
-
     if (!amb.type || !Array.isArray(amb.type) || amb.type.length === 0) {
-      return {
-        success: false,
-        error: new ConversionError(
-          'Missing required field: type',
-          ConversionErrorCode.MISSING_REQUIRED_FIELD
-        ),
-      };
+      return { success: false, error: new ConversionError('Missing required field: type', ConversionErrorCode.MISSING_REQUIRED_FIELD) };
     }
 
-    return {
-      success: true,
-      data: amb as AmbLearningResource,
-    };
+    const result: ConversionResult<AmbLearningResource> = { success: true, data: amb as AmbLearningResource };
+    if (warnings.length > 0) result.warnings = warnings;
+    return result;
   } catch (error) {
     return {
       success: false,
@@ -367,4 +382,172 @@ function reconstructNestedObjects(
 
   // Return single object or array based on count
   return objects.length === 1 ? objects[0] : objects;
+}
+
+/**
+ * Split an ext/ekw tag key into { ns, facet, sub, legacy }. Mirrors
+ * edufeed-app's parseExtensionTags.parseTagKey. Returns null if not an ext key.
+ */
+function parseExtKey(
+  key: string
+): { ns: string; facet: string; sub: string | null; legacy: boolean } | null {
+  if (!key) return null;
+  const segments = key.split(':');
+  if (segments.length < 2) return null;
+
+  let body: string[];
+  let legacy = false;
+  if (segments[0] === 'ext') {
+    body = segments.slice(1);
+  } else if (segments[0] === 'ekw') {
+    body = segments; // ns = 'ekw'
+    legacy = true;
+  } else {
+    return null;
+  }
+  if (body.length < 2) return null;
+
+  let sub: string | null = null;
+  let tail = body.length;
+  const lastSeg = body[body.length - 1];
+  const prevSeg = body[body.length - 2];
+  if (prevSeg === 'prefLabel') {
+    if (!lastSeg) return null;
+    sub = `prefLabel:${lastSeg}`;
+    tail = body.length - 2;
+  } else if (lastSeg === 'id' || lastSeg === 'type') {
+    sub = lastSeg;
+    tail = body.length - 1;
+  }
+  if (tail < 2) return null;
+
+  const facet = body[tail - 1];
+  const ns = body.slice(0, tail - 1).join(':');
+  if (!ns || !facet) return null;
+  return { ns, facet, sub, legacy };
+}
+
+/**
+ * Reconstruct output.ext.<ns>.<facet> from ext/ekw tags. Concept facets
+ * (with :id) become arrays of { id, type, prefLabel? }; scalar facets (bare
+ * key) become string arrays. Pushes a migrate-warning per legacy namespace.
+ */
+function reconstructExt(
+  extTags: string[][],
+  warnings: string[]
+): Record<string, Record<string, any>> | undefined {
+  if (extTags.length === 0) return undefined;
+  const legacyNamespaces = new Set<string>();
+  const work: Record<string, Record<string, { kind: 'concept' | 'scalar'; items: any[] }>> = {};
+
+  for (const tag of extTags) {
+    const key = tag[0];
+    if (typeof key !== 'string') continue;
+    const parsed = parseExtKey(key);
+    if (!parsed) continue;
+    const { ns, facet, sub, legacy } = parsed;
+    if (legacy) legacyNamespaces.add(ns);
+    const value = typeof tag[1] === 'string' ? tag[1] : '';
+
+    if (!work[ns]) work[ns] = {};
+    if (!work[ns][facet]) {
+      work[ns][facet] = { kind: sub === null ? 'scalar' : 'concept', items: [] };
+    }
+    const f = work[ns][facet];
+
+    if (sub === null) {
+      if (f.kind !== 'scalar') continue;
+      if (value) f.items.push(value);
+    } else {
+      if (f.kind !== 'concept') continue;
+      if (sub === 'id') {
+        if (value) f.items.push({ id: value, type: 'Concept' });
+      } else if (sub === 'type') {
+        // presence only; type is always 'Concept'
+      } else if (sub.startsWith('prefLabel:')) {
+        const lang = sub.slice('prefLabel:'.length);
+        const last = f.items[f.items.length - 1];
+        if (last && lang) {
+          if (!last.prefLabel) last.prefLabel = {};
+          last.prefLabel[lang] = value;
+        }
+      }
+    }
+  }
+
+  const out: Record<string, Record<string, any>> = {};
+  for (const ns of Object.keys(work)) {
+    const nsWork = work[ns];
+    if (!nsWork) continue;
+    for (const facet of Object.keys(nsWork)) {
+      const f = nsWork[facet];
+      if (!f || f.items.length === 0) continue;
+      if (!out[ns]) out[ns] = {};
+      out[ns]![facet] = f.items;
+    }
+  }
+
+  for (const ns of legacyNamespaces) {
+    warnings.push(`legacy unprefixed ext namespace '${ns}'; producers should migrate to 'ext:${ns}:'`);
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Map ["p", <pubkey>, <hint?>, <role>] tags (role creator|contributor) to
+ * AMB person objects { id: "nostr:<nprofile>", type: "Person" }. Persons
+ * without a creator/contributor role are ignored.
+ */
+function applyPersonTags(amb: any, pTags: string[][]): void {
+  for (const tag of pTags) {
+    const pubkey = tag[1];
+    const role = tag[3];
+    if (!pubkey) continue;
+    if (role !== 'creator' && role !== 'contributor') continue;
+    const hint = tag[2];
+    const relays = hint ? [hint] : [];
+    let nprofile: string;
+    try {
+      nprofile = nip19.nprofileEncode({ pubkey, relays });
+    } catch {
+      continue;
+    }
+    const person = { id: `nostr:${nprofile}`, type: 'Person' };
+    if (!Array.isArray(amb[role])) amb[role] = [];
+    amb[role].push(person);
+  }
+}
+
+/**
+ * Map ["a", "30142:<pub>:<d>", <hint?>, <role>] tags (role isBasedOn|isPartOf|
+ * hasPart) to AMB relation objects { id: "nostr:<naddr>", type: "LearningResource" }.
+ * Role 'form' and unknown roles are ignored.
+ */
+function applyRelationTags(amb: any, aTags: string[][]): void {
+  const RELATION_ROLES = new Set(['isBasedOn', 'isPartOf', 'hasPart']);
+  for (const tag of aTags) {
+    const coord = tag[1];
+    const role = tag[3];
+    if (!coord || !role || !RELATION_ROLES.has(role)) continue;
+    const parts = coord.split(':');
+    if (parts.length < 3) continue;
+    const rawKind = parts[0];
+    const pubkey = parts[1];
+    if (!rawKind || !pubkey) continue;
+    const kind = parseInt(rawKind, 10);
+    const identifier = parts.slice(2).join(':');
+    if (!Number.isFinite(kind)) continue;
+    const hint = tag[2];
+    const relays = hint ? [hint] : [];
+    let naddr: string;
+    try {
+      naddr = nip19.naddrEncode({ identifier, pubkey, kind, relays });
+    } catch {
+      continue;
+    }
+    const relation = { id: `nostr:${naddr}`, type: 'LearningResource' };
+    if (!Array.isArray(amb[role])) amb[role] = [];
+    amb[role].push(relation);
+  }
 }

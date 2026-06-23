@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { nip19 } from 'nostr-tools';
 import { nostrToAmb } from '../../src/converters/nostrToAmb';
 import { NostrEvent, AmbLearningResource } from '../../src/types';
 
@@ -377,13 +378,13 @@ describe('nostrToAmb', () => {
       expect(amb.name).toBe(expectedAmb1.name);
       expect(amb.description).toBe(expectedAmb1.description);
       expect(amb.type).toEqual(expectedAmb1.type);
-      
+
       // Check keywords
       expect(amb.keywords).toEqual(expectedAmb1.keywords);
-      
+
       // Check inLanguage
       expect(amb.inLanguage).toEqual(expectedAmb1.inLanguage);
-      
+
       // Check license
       expect(amb.license?.id).toBe(expectedAmb1.license?.id);
     });
@@ -401,5 +402,114 @@ describe('nostrToAmb', () => {
         expect(amb.about![0].type).toBe(expectedAmb1.about[0].type);
       }
     });
+  });
+});
+
+describe('ext namespace reconstruction', () => {
+  function baseEvent(tags: string[][]) {
+    return { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '', tags: [['d', 'https://example.org/r1'], ['name', 'T'], ['type', 'LearningResource'], ...tags] };
+  }
+
+  test('reconstructs prefixed concept ext facet', () => {
+    const ev = baseEvent([
+      ['ext:ekw:gradeLevel:id', 'https://example.org/grade/5'],
+      ['ext:ekw:gradeLevel:prefLabel:de', 'Klasse 5'],
+      ['ext:ekw:gradeLevel:type', 'Concept'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.success).toBe(true);
+    expect(result.data!.ext!.ekw.gradeLevel).toEqual([
+      { id: 'https://example.org/grade/5', type: 'Concept', prefLabel: { de: 'Klasse 5' } },
+    ]);
+  });
+
+  test('form-emitted ns keeps the 30168 coordinate', () => {
+    const ev = baseEvent([['ext:30168:pub1:formd:fach:id', 'https://example.org/fach/reli']]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!['30168:pub1:formd'].fach).toEqual([
+      { id: 'https://example.org/fach/reli', type: 'Concept' },
+    ]);
+  });
+
+  test('legacy unprefixed ekw lands in ext.ekw with a warning', () => {
+    const ev = baseEvent([['ekw:gradeLevel:id', 'https://example.org/grade/5']]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!.ekw.gradeLevel).toEqual([{ id: 'https://example.org/grade/5', type: 'Concept' }]);
+    expect(result.warnings?.some((w) => w.includes("legacy unprefixed ext namespace 'ekw'"))).toBe(true);
+  });
+
+  test('r tags are excluded from AMB output', () => {
+    const ev = baseEvent([['r', 'https://oersi.org/x']]);
+    const result = nostrToAmb(ev);
+    expect((result.data as any).r).toBeUndefined();
+  });
+});
+
+describe('p tag reverse mapping', () => {
+  test('maps p tag with creator role to nostr nprofile id', () => {
+    const pub = 'b'.repeat(64);
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'],
+             ['p', pub, 'wss://relay.example', 'creator']] };
+    const result = nostrToAmb(ev);
+    expect(result.success).toBe(true);
+    const creators = result.data!.creator!;
+    expect(creators).toHaveLength(1);
+    expect((creators[0] as any).type).toBe('Person');
+    const decoded = nip19.decode((creators[0] as any).id.replace('nostr:', ''));
+    expect(decoded.type).toBe('nprofile');
+    expect((decoded.data as any).pubkey).toBe(pub);
+  });
+
+  test('ignores p tags without creator/contributor role', () => {
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'], ['p', 'c'.repeat(64)]] };
+    const result = nostrToAmb(ev);
+    expect(result.data!.creator).toBeUndefined();
+    expect(result.data!.contributor).toBeUndefined();
+  });
+});
+
+describe('a tag reverse mapping', () => {
+  test('maps a tag with hasPart role to nostr naddr id', () => {
+    const pub = 'd'.repeat(64);
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'],
+             ['a', `30142:${pub}:child-d`, 'wss://relay.example', 'hasPart']] };
+    const result = nostrToAmb(ev);
+    const parts = (result.data as any).hasPart;
+    expect(parts).toHaveLength(1);
+    expect(parts[0].type).toBe('LearningResource');
+    const decoded = nip19.decode(parts[0].id.replace('nostr:', ''));
+    expect(decoded.type).toBe('naddr');
+    expect((decoded.data as any).identifier).toBe('child-d');
+    expect((decoded.data as any).pubkey).toBe(pub);
+    expect((decoded.data as any).kind).toBe(30142);
+  });
+
+  test('ignores a tags with form role', () => {
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'],
+             ['a', '30168:e'.repeat(1) + '0'.repeat(63) + ':formd', 'wss://r', 'form']] };
+    const result = nostrToAmb(ev);
+    expect((result.data as any).isBasedOn).toBeUndefined();
+    expect((result.data as any).isPartOf).toBeUndefined();
+    expect((result.data as any).hasPart).toBeUndefined();
+  });
+});
+
+describe('content to description', () => {
+  test('non-empty content overrides description tag', () => {
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: 'From content field',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'], ['description', 'From tag']] };
+    const result = nostrToAmb(ev);
+    expect(result.data!.description).toBe('From content field');
+  });
+
+  test('empty content falls back to description tag', () => {
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'], ['description', 'From tag']] };
+    const result = nostrToAmb(ev);
+    expect(result.data!.description).toBe('From tag');
   });
 });
