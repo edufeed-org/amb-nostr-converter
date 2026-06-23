@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { nip19 } from 'nostr-tools';
 import { nostrToAmb } from '../../src/converters/nostrToAmb';
 import { NostrEvent, AmbLearningResource } from '../../src/types';
 
@@ -441,5 +442,30 @@ describe('ext namespace reconstruction', () => {
     const ev = baseEvent([['r', 'https://oersi.org/x']]);
     const result = nostrToAmb(ev);
     expect((result.data as any).r).toBeUndefined();
+  });
+});
+
+describe('p tag reverse mapping', () => {
+  test('maps p tag with creator role to nostr nprofile id', () => {
+    const pub = 'b'.repeat(64);
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'],
+             ['p', pub, 'wss://relay.example', 'creator']] };
+    const result = nostrToAmb(ev);
+    expect(result.success).toBe(true);
+    const creators = result.data!.creator!;
+    expect(creators).toHaveLength(1);
+    expect((creators[0] as any).type).toBe('Person');
+    const decoded = nip19.decode((creators[0] as any).id.replace('nostr:', ''));
+    expect(decoded.type).toBe('nprofile');
+    expect((decoded.data as any).pubkey).toBe(pub);
+  });
+
+  test('ignores p tags without creator/contributor role', () => {
+    const ev = { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'r1'], ['name', 'T'], ['type', 'LearningResource'], ['p', 'c'.repeat(64)]] };
+    const result = nostrToAmb(ev);
+    expect(result.data!.creator).toBeUndefined();
+    expect(result.data!.contributor).toBeUndefined();
   });
 });

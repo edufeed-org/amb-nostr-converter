@@ -2,6 +2,7 @@
  * Converter for Nostr events to AMB metadata
  */
 
+import { nip19 } from 'nostr-tools';
 import {
   NostrEvent,
   AmbLearningResource,
@@ -65,6 +66,9 @@ export function nostrToAmb(
     // C1/C6: extension namespace reconstruction
     const ext = reconstructExt(extTags, warnings);
     if (ext) amb.ext = ext;
+
+    // C2: Nostr-native creator/contributor (p tags)
+    applyPersonTags(amb, pTags);
 
     // Validate required fields
     if (!amb.id) {
@@ -480,4 +484,29 @@ function reconstructExt(
   }
 
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Map ["p", <pubkey>, <hint?>, <role>] tags (role creator|contributor) to
+ * AMB person objects { id: "nostr:<nprofile>", type: "Person" }. Persons
+ * without a creator/contributor role are ignored.
+ */
+function applyPersonTags(amb: any, pTags: string[][]): void {
+  for (const tag of pTags) {
+    const pubkey = tag[1];
+    const role = tag[3];
+    if (!pubkey) continue;
+    if (role !== 'creator' && role !== 'contributor') continue;
+    const hint = tag[2];
+    const relays = hint ? [hint] : [];
+    let nprofile: string;
+    try {
+      nprofile = nip19.nprofileEncode({ pubkey, relays });
+    } catch {
+      continue;
+    }
+    const person = { id: `nostr:${nprofile}`, type: 'Person' };
+    if (!Array.isArray(amb[role])) amb[role] = [];
+    amb[role].push(person);
+  }
 }
