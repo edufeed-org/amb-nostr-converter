@@ -359,3 +359,46 @@ describe('ambToNostr', () => {
     });
   });
 });
+
+describe('ext namespace emission', () => {
+  test('emits concept ext tags in id, prefLabel, type order', () => {
+    const resource: any = {
+      '@context': ['https://w3id.org/kim/amb/context.jsonld'],
+      id: 'https://example.org/r1',
+      type: ['LearningResource'],
+      name: 'Test',
+      ext: {
+        ekw: {
+          gradeLevel: [
+            { id: 'https://example.org/grade/5', type: 'Concept', prefLabel: { de: 'Klasse 5' } },
+          ],
+        },
+      },
+    };
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    expect(result.success).toBe(true);
+    const tags = result.data!.tags;
+    const ekw = tags.filter((t) => t[0].startsWith('ext:ekw:gradeLevel'));
+    expect(ekw).toEqual([
+      ['ext:ekw:gradeLevel:id', 'https://example.org/grade/5'],
+      ['ext:ekw:gradeLevel:prefLabel:de', 'Klasse 5'],
+      ['ext:ekw:gradeLevel:type', 'Concept'],
+    ]);
+  });
+
+  test('emits bare tags for scalar ext facets', () => {
+    const resource: any = {
+      '@context': ['https://w3id.org/kim/amb/context.jsonld'],
+      id: 'https://example.org/r1',
+      type: ['LearningResource'],
+      name: 'Test',
+      ext: { ekw: { bibleReference: ['Joh 3,16', 'Ps 23'] } },
+    };
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    const refs = result.data!.tags.filter((t) => t[0] === 'ext:ekw:bibleReference');
+    expect(refs).toEqual([
+      ['ext:ekw:bibleReference', 'Joh 3,16'],
+      ['ext:ekw:bibleReference', 'Ps 23'],
+    ]);
+  });
+});

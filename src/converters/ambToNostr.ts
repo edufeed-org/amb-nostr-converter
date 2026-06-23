@@ -408,6 +408,29 @@ export function ambToNostr(
       addRelationshipTags('isBasedOn', ambResource.isBasedOn);
     }
 
+    // Add extension properties (ext namespace) — symmetric with nostrToAmb reconstruction.
+    // Concept facets emit id, prefLabel:<lang>(s), type (order matters for reverse boundary).
+    // Scalar facets emit a bare ext:<ns>:<facet> tag per value.
+    if (ambResource.ext) {
+      for (const [ns, facets] of Object.entries(ambResource.ext)) {
+        for (const [facet, items] of Object.entries(facets)) {
+          for (const item of items as Array<any>) {
+            if (typeof item === 'string') {
+              tags.push(createTag(`ext:${ns}:${facet}`, item));
+            } else if (item && typeof item === 'object') {
+              if (item.id) tags.push(createTag(`ext:${ns}:${facet}:id`, item.id));
+              if (item.prefLabel) {
+                for (const [lang, label] of Object.entries(item.prefLabel)) {
+                  tags.push(createTag(`ext:${ns}:${facet}:prefLabel:${lang}`, label as string));
+                }
+              }
+              tags.push(createTag(`ext:${ns}:${facet}:type`, item.type || 'Concept'));
+            }
+          }
+        }
+      }
+    }
+
     // Create the Nostr event
     // Per AMB spec, content SHOULD contain description for client compatibility
     // The description tag is kept for relay queryability
