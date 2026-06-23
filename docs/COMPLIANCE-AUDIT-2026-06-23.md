@@ -10,18 +10,18 @@ The NIP-AMB specification is defined at:
 - **Spec:** [AMB.md](https://git.edufeed.org/edufeed/nips/src/branch/edufeed-amb/AMB.md)
 
 The canonical compliant implementation in edufeed-app is:
-- **Forward (Nostr → JSON):** `src/lib/helpers/educational/parseExtensionTags.js` — parses `ext:` namespaced tags and reconstructs metadata
-- **Reverse (JSON → Nostr):** `src/lib/helpers/educational/formDataToEkwTags.js` — emits `ext:` tags for form-defined extensions and `p`/`a` tags for creators/relationships
+- **Nostr → JSON (reverse, mirrors `nostrToAmb`):** `src/lib/helpers/educational/parseExtensionTags.js` — parses `ext:` namespaced tags and reconstructs metadata. Classification rule (verbatim): a tag is an extension **iff** its key starts with `ext:` or `ekw:`; all other colon-delimited keys are AMB-core.
+- **JSON → Nostr (forward, mirrors `ambToNostr`):** `src/lib/helpers/educational/formDataToEkwTags.js` — emits `ext:` triples (`id`, then `prefLabel:<lang>`, then `type`) for form-defined extensions.
 
 ## Drift Table: Non-Conformances (C1–C7)
 
 | ID | Issue | Current File:Line | Required Behavior | Impact |
 |----|-------|------------------|-------------------|--------|
-| **C1** | `ext:` namespace unhandled both directions | `nostrToAmb.ts:117–127`; `ambToNostr.ts:99–409` (no ext handling) | Both converters must handle `ext:30168:<pubkey>:<d>:<key>` tags: `nostrToAmb` parses into `ext` field, `ambToNostr` emits them from input | Extensions (e.g., form-specific metadata) are silently dropped in both directions |
-| **C2** | `p` tags ignored; creators/contributors have no Nostr identity | `nostrToAmb.ts:110–134` (only d/t special-cased) | `nostrToAmb` must map `p` tags with role `creator`/`contributor` to `creator`/`contributor` array with `{ id: "nostr:<nprofile>", type: "Person" }` | Creator/contributor Nostr pubkey provenance lost in forward conversion |
-| **C3** | `a` tags ignored; relationships have no Nostr identity | `nostrToAmb.ts:110–134` (only d/t special-cased) | `nostrToAmb` must parse `a` tags, bucket by role (hasPart/isPartOf/isBasedOn), and emit `{ id: "nostr:<naddr>", type: "LearningResource", … }` refs; role `form` ignored | Relationship Nostr event references lost in forward conversion |
+| **C1** | `ext:` namespace unhandled both directions | `nostrToAmb.ts:158–159` (skip list excludes only `d`/`t`, so `ext:` keys are mangled by generic unflatten); `ambToNostr.ts` (no `ext` emission anywhere) | Both converters must handle `ext:30168:<pubkey>:<d>:<key>` tags: `nostrToAmb` parses into `ext` field, `ambToNostr` emits them from input | Extensions (e.g., form-specific metadata) are silently dropped in both directions |
+| **C2** | `p` tags ignored; creators/contributors have no Nostr identity | `nostrToAmb.ts:158–159` (skip list excludes only `d`/`t`; `p` falls through generic unflatten into a junk `p` property) | `nostrToAmb` must map `p` tags with role `creator`/`contributor` to `creator`/`contributor` array with `{ id: "nostr:<nprofile>", type: "Person" }` | Creator/contributor Nostr pubkey provenance lost in forward conversion |
+| **C3** | `a` tags ignored; relationships have no Nostr identity | `nostrToAmb.ts:158–159` (skip list excludes only `d`/`t`; `a` falls through generic unflatten into a junk `a` property) | `nostrToAmb` must parse `a` tags, bucket by role (hasPart/isPartOf/isBasedOn), and emit `{ id: "nostr:<naddr>", type: "LearningResource", … }` refs; role `form` ignored | Relationship Nostr event references lost in forward conversion |
 | **C4** | `event.content` never read; descriptions are tag-only | `nostrToAmb.ts:16–88` (no `.content` reference) | `nostrToAmb` must prefer non-empty `event.content` for `description` field (per AMB spec, content field SHOULD carry description for client compatibility) | If content field exists but description tag missing, the natural description source is ignored |
-| **C5** | `r` tags fold into generic output as `r` property | `nostrToAmb.ts:130–133` (r tags grouped via generic unflatten) | `r` tags (Nostr relay hints) must be excluded from output; they are transport metadata, not AMB data | Extra `r` property pollutes AMB JSON structure |
+| **C5** | `r` tags fold into generic output as `r` property | `nostrToAmb.ts:158–166` (skip list at line 159 only excludes `d`/`t`; `r` falls through the generic unflatten loop) | `r` tags (Nostr-native supplementary refs) must be excluded from output; they are transport metadata, not AMB data | Extra `r` property pollutes AMB JSON structure |
 | **C6** | Form-emitted extensions unmodeled (no round-trip) | `ambToNostr.ts:99–409` (no ext input field) | `ambToNostr` must accept `ext` field in AMB input and emit symmetric `ext:30168:<pubkey>:<d>:<key>:…` tags | Form metadata cannot be round-tripped: JSON → Nostr loses the ext structure |
 | **C7** | `ambToNostr.ts` emits no `ext` tags, has no `ext` input | `ambToNostr.ts:39–449` (no ext parameter or emission logic) | `ambToNostr` must read `ext` object from input and emit one `ext:` tag per property (namespace = `30168:<pubkey>:<d>`) | Extensions cannot be encoded back to Nostr |
 
@@ -35,10 +35,13 @@ The following limitations are inherent to offline conversion and should be docum
 
 ## Remediation
 
-The following implementation plan addresses all drift points:
+The following implementation plan addresses all drift points (test-first):
 
-- **Tasks 2–3:** Parser refactoring — extend `nostrToAmb` to handle `ext:` tags, `p` tags, `a` tags, `event.content`, and exclude `r` tags.
-- **Tasks 4–5:** Reverse encoder fixes — add `ext` input field to `ambToNostr`, emit `ext:` tags, and output `p`/`a` tags (already partially done).
-- **Tasks 6–7:** Test coverage — add fixtures and assertions for all seven non-conformances.
+- **Task 2:** Add an `ext` field (`ext[ns][facet] = Concept[] | string[]`) to the AMB types.
+- **Task 3 (C7):** Forward — `ambToNostr` emits `ext:` tags from `resource.ext`.
+- **Task 4 (C1, C5, C6):** Reverse — `nostrToAmb` partitions tags, reconstructs `ext` (including form-emitted ns `30168:<pub>:<d>`), and excludes `r` tags.
+- **Task 5 (C2):** Reverse — `p` tags → creator/contributor `{ id: "nostr:<nprofile>", type: "Person" }`.
+- **Task 6 (C3):** Reverse — `a` tags → relations `{ id: "nostr:<naddr>", type: "LearningResource" }` bucketed by role; role `form` ignored.
+- **Task 7 (C4):** Reverse — prefer non-empty `event.content` for `description`.
 
 See the implementation plan at: `docs/superpowers/plans/2026-06-23-amb-converter-realignment-and-datapool-handout.md`
