@@ -48,7 +48,10 @@ export async function nostrToAmbWithProfiles(
   event: NostrEvent,
   options: ProfileResolutionOptions = {}
 ): Promise<ConversionResult<AmbLearningResource>> {
-  const base = nostrToAmb(event, { defaultLanguage: options.defaultLanguage });
+  const base =
+    options.defaultLanguage !== undefined
+      ? nostrToAmb(event, { defaultLanguage: options.defaultLanguage })
+      : nostrToAmb(event);
   if (!base.success || !base.data) return base;
 
   const amb = base.data as AmbLearningResource & Record<string, unknown>;
