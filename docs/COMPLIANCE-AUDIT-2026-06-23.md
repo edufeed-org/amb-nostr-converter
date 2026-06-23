@@ -33,6 +33,8 @@ The following limitations are inherent to offline conversion and should be docum
 
 2. **`name` field for `p`-tag persons requires a kind 0 (metadata) fetch.** This is out of scope for an offline converter. Tests should allow omission of creator `name` when converting from bare pubkeys, and populate it only when caller provides a pre-fetched name via the person object.
 
+3. **A creator that has a Nostr pubkey is represented twice on reverse.** edufeed's forward emission writes both the flattened `creator:*` core tags (name, type, affiliation — see `formDataToAmb.js` + `appendCreatorPTags` in `eventTags.js`) AND a separate `["p", pubkey, hint, "creator"]` tag for the same person. On reverse, `unflattenTags` reconstructs the name-described `{ name, type }` entry while `applyPersonTags` appends the `{ id: "nostr:<nprofile>", type: "Person" }` entry, so `amb.creator` carries two objects for one person. This is **intentional and matches the reference implementation** (`edufeed-app/ambTransform.js:85-103` does the identical non-deduping push). Deduping would make the converter diverge from the producer it must mirror, so it is documented here rather than fixed. (The design doc's assumption that p-tag persons carry no `creator:*` tags was inaccurate for edufeed's real output; the resulting behavior is nonetheless correct.)
+
 ## Remediation
 
 The following implementation plan addresses all drift points (test-first):
