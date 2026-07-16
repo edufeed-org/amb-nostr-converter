@@ -295,6 +295,16 @@ export function ambToNostr(
       tags.push(createTag('duration', ambResource.duration));
     }
 
+    // Add suggestedAge (object with integer minValue/maxValue bounds)
+    if (ambResource.suggestedAge) {
+      if (ambResource.suggestedAge.minValue !== undefined) {
+        tags.push(createTag('suggestedAge:minValue', String(ambResource.suggestedAge.minValue)));
+      }
+      if (ambResource.suggestedAge.maxValue !== undefined) {
+        tags.push(createTag('suggestedAge:maxValue', String(ambResource.suggestedAge.maxValue)));
+      }
+    }
+
     // Add image
     if (ambResource.image) {
       tags.push(createTag('image', ambResource.image));
@@ -379,7 +389,9 @@ export function ambToNostr(
       const addRelationshipTags = (prefix: string, refs: typeof ambResource.hasPart) => {
         if (!refs || refs.length === 0) return;
         refs.forEach(ref => {
-          tags.push(createTag(`${prefix}:id`, ref.id));
+          if (ref.id) {
+            tags.push(createTag(`${prefix}:id`, ref.id));
+          }
           if (ref.name) {
             tags.push(createTag(`${prefix}:name`, ref.name));
           }

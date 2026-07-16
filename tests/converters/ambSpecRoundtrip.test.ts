@@ -49,9 +49,6 @@ function deepDiff(original: any, roundtripped: any, path = ''): string[] {
   }
 
   if (typeof original !== typeof roundtripped) {
-    // Allow boolean <-> string conversion for isAccessibleForFree
-    if (typeof original === 'boolean' && roundtripped === String(original)) return diffs;
-    if (typeof original === 'string' && (roundtripped === true || roundtripped === false) && String(roundtripped) === original) return diffs;
     diffs.push(`${path}: type mismatch - original ${typeof original}, roundtripped ${typeof roundtripped}`);
     return diffs;
   }

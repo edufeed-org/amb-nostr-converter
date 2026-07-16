@@ -529,3 +529,41 @@ describe('nostr: creator id round-trip', () => {
     expect((decoded.data as any).pubkey).toBe(pubkey);
   });
 });
+
+describe('strict roundtrip fixes', () => {
+  function base(overrides: any): any {
+    return {
+      '@context': ['https://w3id.org/kim/amb/context.jsonld'],
+      id: 'https://example.org/r1',
+      type: ['LearningResource'],
+      name: 'Test',
+      ...overrides,
+    };
+  }
+
+  test('name-only relation emits no :id tag (no "undefined" string)', () => {
+    const resource = base({ isBasedOn: [{ name: 'Some source work' }] });
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    expect(result.success).toBe(true);
+    const tags = result.data!.tags;
+    expect(tags.filter((t) => t[0] === 'isBasedOn:id')).toEqual([]);
+    expect(tags).toContainEqual(['isBasedOn:name', 'Some source work']);
+    expect(tags.some((t) => t.includes('undefined'))).toBe(false);
+  });
+
+  test('suggestedAge emits minValue/maxValue tags', () => {
+    const resource = base({ suggestedAge: { minValue: 12, maxValue: 16 } });
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    const tags = result.data!.tags;
+    expect(tags).toContainEqual(['suggestedAge:minValue', '12']);
+    expect(tags).toContainEqual(['suggestedAge:maxValue', '16']);
+  });
+
+  test('suggestedAge with only minValue emits a single tag', () => {
+    const resource = base({ suggestedAge: { minValue: 18 } });
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    const tags = result.data!.tags;
+    expect(tags).toContainEqual(['suggestedAge:minValue', '18']);
+    expect(tags.filter((t) => t[0] === 'suggestedAge:maxValue')).toEqual([]);
+  });
+});

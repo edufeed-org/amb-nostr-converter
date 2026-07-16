@@ -123,6 +123,8 @@ export interface AmbLearningResourceBase extends AmbContext {
   assesses?: Concept[];
   competencyRequired?: Concept[];
   interactivityType?: Concept;
+  /** Recommended age range of the target audience (draft schema; at least one bound). */
+  suggestedAge?: { minValue?: number; maxValue?: number };
 
   // Temporal information
   dateCreated?: string;

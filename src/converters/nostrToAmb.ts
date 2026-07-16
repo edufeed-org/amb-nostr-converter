@@ -81,6 +81,19 @@ export function nostrToAmb(
       amb.description = event.content;
     }
 
+    // Coerce string-encoded scalars back to their AMB schema types.
+    if (amb.isAccessibleForFree === 'true') amb.isAccessibleForFree = true;
+    else if (amb.isAccessibleForFree === 'false') amb.isAccessibleForFree = false;
+    if (amb.suggestedAge) {
+      const sa = Array.isArray(amb.suggestedAge) ? amb.suggestedAge[0] : amb.suggestedAge;
+      const coerced: { minValue?: number; maxValue?: number } = {};
+      const min = parseInt(sa?.minValue, 10);
+      const max = parseInt(sa?.maxValue, 10);
+      if (Number.isFinite(min)) coerced.minValue = min;
+      if (Number.isFinite(max)) coerced.maxValue = max;
+      amb.suggestedAge = coerced;
+    }
+
     // Non-URI d values (slugs) derive the AMB id as nostr:<naddr> per NIP-AMB.
     if (typeof amb.id === 'string' && amb.id && !URI_SCHEME.test(amb.id)) {
       if (event.pubkey) {

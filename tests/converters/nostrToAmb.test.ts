@@ -554,3 +554,33 @@ describe('content to description', () => {
     expect(result.data!.description).toBe('From tag');
   });
 });
+
+describe('scalar type coercion', () => {
+  function eventWithTags(tags: string[][]) {
+    return { kind: 30142, pubkey: 'a'.repeat(64), created_at: 1, content: '',
+      tags: [['d', 'https://example.org/r1'], ['name', 'T'], ['type', 'LearningResource'], ...tags] };
+  }
+
+  test('isAccessibleForFree "true" becomes boolean true', () => {
+    const result = nostrToAmb(eventWithTags([['isAccessibleForFree', 'true']]));
+    expect(result.data!.isAccessibleForFree).toBe(true);
+  });
+
+  test('isAccessibleForFree "false" becomes boolean false', () => {
+    const result = nostrToAmb(eventWithTags([['isAccessibleForFree', 'false']]));
+    expect(result.data!.isAccessibleForFree).toBe(false);
+  });
+
+  test('suggestedAge values become integers', () => {
+    const result = nostrToAmb(eventWithTags([
+      ['suggestedAge:minValue', '12'],
+      ['suggestedAge:maxValue', '16'],
+    ]));
+    expect(result.data!.suggestedAge).toEqual({ minValue: 12, maxValue: 16 });
+  });
+
+  test('suggestedAge with only minValue', () => {
+    const result = nostrToAmb(eventWithTags([['suggestedAge:minValue', '18']]));
+    expect(result.data!.suggestedAge).toEqual({ minValue: 18 });
+  });
+});
