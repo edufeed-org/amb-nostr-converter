@@ -42,7 +42,7 @@ export interface Person {
   honorificSuffix?: string;
   email?: string;
   affiliation?: Organization;
-  // Nostr-specific extensions for p tag support
+  /** @deprecated Set `id` to a `nostr:npub…`/`nostr:nprofile…` URI instead (NIP-AMB). */
   nostrPubkey?: string;
   relayHint?: string;
 }
@@ -56,7 +56,7 @@ export interface Organization {
   name: string;
   url?: string;
   email?: string;
-  // Nostr-specific extensions for p tag support
+  /** @deprecated Set `id` to a `nostr:npub…`/`nostr:nprofile…` URI instead (NIP-AMB). */
   nostrPubkey?: string;
   relayHint?: string;
 }

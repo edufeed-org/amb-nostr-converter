@@ -47,3 +47,13 @@ The following implementation plan addresses all drift points (test-first):
 - **Task 7 (C4):** Reverse — prefer non-empty `event.content` for `description`.
 
 See the implementation plan at: `docs/superpowers/plans/2026-06-23-amb-converter-realignment-and-datapool-handout.md`
+
+---
+
+## Addendum 2026-07-16: Forward-path `nostr:` creator ids + spec realignment
+
+The NIP-AMB spec was clarified (see `nips/BREAKING.md`, 2026-07-16) and the converter updated accordingly:
+
+1. **Forward (`ambToNostr`)** now detects `nostr:npub…`/`nostr:nprofile…` URIs in `creator.id`/`contributor.id` (valid AMB input — the schema only requires `format: uri`) and emits a single `["p", <hex>, <relay-hint>, <role>]` tag instead of flattened tags. This closes the forward-path gap the original audit did not flag (it assumed producers set the out-of-spec `nostrPubkey` field, which is now deprecated). The `nostrPubkey` path also now emits **only** the `p` tag, enforcing the spec's "never both" rule — Known Lossiness item 3 above described legacy dual-write behavior that is no longer produced (consumers still tolerate old dual-write events).
+2. **Reverse (`nostrToAmb`)** p-tag persons now include a `name` (npub fallback) so offline output validates against the AMB schema (`required: ["name","type"]`) — supersedes Known Lossiness item 2. `nostrToAmbWithProfiles` replaces the fallback with the kind:0 profile name.
+3. **Reverse `d` → `id`**: non-URI `d` values (slugs) now derive `id` as `nostr:<naddr>` from (kind, pubkey, d); absolute-URI `d` values pass through verbatim.

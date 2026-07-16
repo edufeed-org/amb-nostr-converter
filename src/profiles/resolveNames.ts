@@ -39,10 +39,21 @@ function shortNpub(pubkey: string): string {
   }
 }
 
+/** True when the entry's name is missing or is the npub fallback nostrToAmb emits. */
+function isReplaceableName(name: string | undefined, pubkey: string): boolean {
+  if (!name) return true;
+  try {
+    return name === nip19.npubEncode(pubkey);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Like `nostrToAmb`, but additionally fetches kind-0 profiles and fills the
- * `name` of creator/contributor entries whose id is a `nostr:` URI. Always
- * resolves; failures degrade gracefully into `result.warnings`.
+ * `name` of creator/contributor entries whose id is a `nostr:` URI and whose
+ * name is missing or the npub fallback. Always resolves; failures degrade
+ * gracefully into `result.warnings`.
  */
 export async function nostrToAmbWithProfiles(
   event: NostrEvent,
@@ -56,15 +67,18 @@ export async function nostrToAmbWithProfiles(
 
   const amb = base.data as AmbLearningResource & Record<string, unknown>;
 
-  // Collect person entries that have a nostr id but no name yet.
+  // Collect person entries that have a nostr id and no real name yet
+  // (missing, or the npub fallback nostrToAmb emits for schema validity).
   const targets: Array<{ entry: { name?: string }; pubkey: string }> = [];
   for (const field of PERSON_FIELDS) {
     const list = (amb as Record<string, unknown>)[field];
     if (!Array.isArray(list)) continue;
     for (const entry of list) {
-      if (!entry || typeof entry !== 'object' || (entry as { name?: string }).name) continue;
+      if (!entry || typeof entry !== 'object') continue;
       const pubkey = decodePubkey((entry as { id?: unknown }).id);
-      if (pubkey) targets.push({ entry: entry as { name?: string }, pubkey });
+      if (!pubkey) continue;
+      if (!isReplaceableName((entry as { name?: string }).name, pubkey)) continue;
+      targets.push({ entry: entry as { name?: string }, pubkey });
     }
   }
 

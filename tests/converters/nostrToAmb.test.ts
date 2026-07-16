@@ -375,6 +375,7 @@ describe('nostrToAmb', () => {
       const amb = result.data!;
 
       // Check core fields
+      expect(amb.id).toBe(expectedAmb1.id);
       expect(amb.name).toBe(expectedAmb1.name);
       expect(amb.description).toBe(expectedAmb1.description);
       expect(amb.type).toEqual(expectedAmb1.type);
@@ -456,6 +457,8 @@ describe('p tag reverse mapping', () => {
     const creators = result.data!.creator!;
     expect(creators).toHaveLength(1);
     expect((creators[0] as any).type).toBe('Person');
+    // name is required by the AMB schema; offline conversion falls back to npub
+    expect((creators[0] as any).name).toBe(nip19.npubEncode(pub));
     const decoded = nip19.decode((creators[0] as any).id.replace('nostr:', ''));
     expect(decoded.type).toBe('nprofile');
     expect((decoded.data as any).pubkey).toBe(pub);
@@ -467,6 +470,44 @@ describe('p tag reverse mapping', () => {
     const result = nostrToAmb(ev);
     expect(result.data!.creator).toBeUndefined();
     expect(result.data!.contributor).toBeUndefined();
+  });
+});
+
+describe('d tag to id derivation', () => {
+  const pub = 'a'.repeat(64);
+  function eventWithD(d: string) {
+    return { kind: 30142, pubkey: pub, created_at: 1, content: '',
+      tags: [['d', d], ['name', 'T'], ['type', 'LearningResource']] };
+  }
+
+  test('absolute URI d values are kept verbatim', () => {
+    const result = nostrToAmb(eventWithD('https://example.org/resources/x'));
+    expect(result.data!.id).toBe('https://example.org/resources/x');
+  });
+
+  test('non-http URI schemes are kept verbatim', () => {
+    const result = nostrToAmb(eventWithD('urn:isbn:978-3-16-148410-0'));
+    expect(result.data!.id).toBe('urn:isbn:978-3-16-148410-0');
+  });
+
+  test('slug d values derive a nostr:naddr id', () => {
+    const result = nostrToAmb(eventWithD('abc123xy'));
+    expect(result.success).toBe(true);
+    const id = result.data!.id as string;
+    expect(id.startsWith('nostr:naddr1')).toBe(true);
+    const decoded = nip19.decode(id.replace('nostr:', ''));
+    expect(decoded.type).toBe('naddr');
+    expect((decoded.data as any).identifier).toBe('abc123xy');
+    expect((decoded.data as any).pubkey).toBe(pub);
+    expect((decoded.data as any).kind).toBe(30142);
+  });
+
+  test('slug d without event pubkey stays verbatim with a warning', () => {
+    const ev = { kind: 30142, created_at: 1, content: '',
+      tags: [['d', 'abc123xy'], ['name', 'T'], ['type', 'LearningResource']] } as any;
+    const result = nostrToAmb(ev);
+    expect(result.data!.id).toBe('abc123xy');
+    expect(result.warnings?.some((w) => w.includes('not an absolute URI'))).toBe(true);
   });
 });
 

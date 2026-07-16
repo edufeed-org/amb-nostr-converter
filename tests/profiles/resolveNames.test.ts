@@ -1,4 +1,5 @@
 import { vi, describe, test, expect } from 'vitest';
+import { nip19 } from 'nostr-tools';
 import { nostrToAmbWithProfiles } from '../../src/profiles/resolveNames';
 import { DEFAULT_PROFILE_RELAYS } from '../../src/profiles/websocketFetcher';
 import type { ProfileInfo } from '../../src/profiles/types';
@@ -75,19 +76,19 @@ describe('nostrToAmbWithProfiles', () => {
     expect(fetchProfile).not.toHaveBeenCalled();
   });
 
-  test('fetcher rejection → still success, person unnamed, warning present', async () => {
+  test('fetcher rejection → still success, npub fallback name kept, warning present', async () => {
     const fetchProfile = vi.fn(async () => { throw new Error('boom'); });
     const result = await nostrToAmbWithProfiles(eventWithCreator(PK_A), { fetchProfile });
     expect(result.success).toBe(true);
-    expect(result.data!.creator![0].name).toBeUndefined();
+    expect(result.data!.creator![0].name).toBe(nip19.npubEncode(PK_A));
     expect(result.warnings).toContain('profile fetch failed: boom');
   });
 
-  test('pubkey absent from map → unnamed with a per-pubkey warning', async () => {
+  test('pubkey absent from map → npub fallback name with a per-pubkey warning', async () => {
     const fetchProfile = mockFetcher({}); // empty
     const result = await nostrToAmbWithProfiles(eventWithCreator(PK_A), { fetchProfile });
     expect(result.success).toBe(true);
-    expect(result.data!.creator![0].name).toBeUndefined();
+    expect(result.data!.creator![0].name).toBe(nip19.npubEncode(PK_A));
     expect(result.warnings!.some((w) => w.startsWith('no profile name for'))).toBe(true);
   });
 

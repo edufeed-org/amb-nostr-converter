@@ -4,6 +4,7 @@
  */
 
 import crypto from 'crypto';
+import { nip19 } from 'nostr-tools';
 import {
   AmbLearningResource,
   getResourceType,
@@ -129,32 +130,42 @@ export function ambToNostr(
       });
     }
 
-    // Add creators (using colon-delimited tags + optional p tags for Nostr pubkeys)
+    // Add creators/contributors. Per NIP-AMB, each person gets exactly one
+    // representation (never both): a Nostr identity (nostr: URI id, or the
+    // deprecated nostrPubkey field) emits only a p tag; everyone else gets
+    // flattened tags.
+    const addPersonEntity = (
+      entity: Person | Organization,
+      role: 'creator' | 'contributor'
+    ): void => {
+      const entityId = 'id' in entity ? entity.id : undefined;
+      const decoded = decodeNostrPersonId(entityId);
+      if (decoded) {
+        const relayHint = decoded.relays[0]
+          || (('relayHint' in entity && entity.relayHint) ? entity.relayHint : '')
+          || options.defaultRelayHint
+          || '';
+        tags.push(['p', decoded.pubkey, relayHint, role]);
+        return;
+      }
+      if (entityId?.startsWith('nostr:')) {
+        warnings.push(`${role} id "${entityId}" looks like a nostr: URI but could not be decoded; emitting flattened tags`);
+      } else if ('nostrPubkey' in entity && entity.nostrPubkey) {
+        const relayHint = ('relayHint' in entity && entity.relayHint)
+          ? entity.relayHint
+          : options.defaultRelayHint || '';
+        tags.push(['p', entity.nostrPubkey, relayHint, role]);
+        return;
+      }
+      addPersonOrOrgTags(tags, role, entity);
+    };
+
     if (ambResource.creator && ambResource.creator.length > 0) {
-      ambResource.creator.forEach(creator => {
-        addPersonOrOrgTags(tags, 'creator', creator);
-        // Add Nostr-native p tag if pubkey is available
-        if ('nostrPubkey' in creator && creator.nostrPubkey) {
-          const relayHint = ('relayHint' in creator && creator.relayHint)
-            ? creator.relayHint
-            : options.defaultRelayHint || '';
-          tags.push(['p', creator.nostrPubkey, relayHint, 'creator']);
-        }
-      });
+      ambResource.creator.forEach(creator => addPersonEntity(creator, 'creator'));
     }
 
-    // Add contributors (using colon-delimited tags + optional p tags for Nostr pubkeys)
     if (ambResource.contributor && ambResource.contributor.length > 0) {
-      ambResource.contributor.forEach(contributor => {
-        addPersonOrOrgTags(tags, 'contributor', contributor);
-        // Add Nostr-native p tag if pubkey is available
-        if ('nostrPubkey' in contributor && contributor.nostrPubkey) {
-          const relayHint = ('relayHint' in contributor && contributor.relayHint)
-            ? contributor.relayHint
-            : options.defaultRelayHint || '';
-          tags.push(['p', contributor.nostrPubkey, relayHint, 'contributor']);
-        }
-      });
+      ambResource.contributor.forEach(contributor => addPersonEntity(contributor, 'contributor'));
     }
 
     // Add publishers (using colon-delimited tags)
@@ -471,6 +482,29 @@ export function ambToNostr(
   }
 }
 
+
+/**
+ * Decode a `nostr:npub…`/`nostr:nprofile…` id (NIP-21) to a hex pubkey plus
+ * any embedded relay hints, else null.
+ */
+function decodeNostrPersonId(
+  id: string | undefined
+): { pubkey: string; relays: string[] } | null {
+  if (!id || !id.startsWith('nostr:')) return null;
+  try {
+    const decoded = nip19.decode(id.slice('nostr:'.length));
+    if (decoded.type === 'npub') {
+      return { pubkey: decoded.data as string, relays: [] };
+    }
+    if (decoded.type === 'nprofile') {
+      const data = decoded.data as { pubkey: string; relays?: string[] };
+      return { pubkey: data.pubkey, relays: data.relays ?? [] };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 /**
  * Extract name from Person or Organization

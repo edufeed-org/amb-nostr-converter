@@ -50,6 +50,27 @@ if (result.success) {
 }
 ```
 
+### Creator identities (Nostr-native vs. external)
+
+Per [NIP-AMB](https://git.edufeed.org/edufeed/nips/src/branch/edufeed-amb/AMB.md), each creator/contributor gets exactly one representation in the event — never both:
+
+- **Nostr identity**: set the person's `id` to a `nostr:npub…` or `nostr:nprofile…` URI ([NIP-21](https://github.com/nostr-protocol/nips/blob/master/21.md)). `ambToNostr` decodes it and emits a `["p", <pubkey-hex>, <relay-hint>, "creator"|"contributor"]` tag; no flattened `creator:*` tags are written for that person. Relay hint precedence: nprofile-embedded relay → `defaultRelayHint` option → empty. (The legacy `nostrPubkey` field still works but is deprecated.)
+- **External identity**: any other `id` (e.g. an ORCID URL) — or no `id` — produces flattened `creator:name`/`creator:type`/`creator:id`/… tags.
+
+```typescript
+const resource: AmbLearningResource = {
+  // ...
+  "creator": [
+    { "type": "Person", "name": "Jane Smith", "id": "nostr:npub1..." },          // → p tag
+    { "type": "Person", "name": "John Doe", "id": "https://orcid.org/0000-..." } // → creator:* tags
+  ],
+};
+```
+
+On reverse conversion, `nostrToAmb` maps each creator/contributor `p` tag to `{ name, type: "Person", id: "nostr:<nprofile>" }`. Because the AMB schema requires `name` and the base converter is offline, `name` falls back to the npub encoding; use `nostrToAmbWithProfiles` to resolve real names from kind:0 profiles (it replaces the npub fallback).
+
+For events whose `d` tag is not an absolute URI (e.g. a slug), `nostrToAmb` derives the AMB `id` as `nostr:<naddr>` from the event's kind, pubkey, and `d` value.
+
 ### As a CLI Tool
 
 ```bash

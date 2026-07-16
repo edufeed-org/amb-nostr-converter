@@ -4,7 +4,9 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { nip19 } from 'nostr-tools';
 import { ambToNostr } from '../../src/converters/ambToNostr';
+import { nostrToAmb } from '../../src/converters/nostrToAmb';
 import {
   AmbLearningResource,
   NostrEducationalKind,
@@ -400,5 +402,130 @@ describe('ext namespace emission', () => {
       ['ext:ekw:bibleReference', 'Joh 3,16'],
       ['ext:ekw:bibleReference', 'Ps 23'],
     ]);
+  });
+});
+
+describe('Nostr-native creator identities', () => {
+  const pubkey = 'b'.repeat(64);
+
+  function baseResource(overrides: any): any {
+    return {
+      '@context': ['https://w3id.org/kim/amb/context.jsonld'],
+      id: 'https://example.org/r1',
+      type: ['LearningResource'],
+      name: 'Test',
+      ...overrides,
+    };
+  }
+
+  test('creator with nostr:npub id emits only a p tag', () => {
+    const npub = nip19.npubEncode(pubkey);
+    const resource = baseResource({
+      creator: [{ type: 'Person', name: 'Jane Doe', id: `nostr:${npub}` }],
+    });
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    expect(result.success).toBe(true);
+    const tags = result.data!.tags;
+    expect(tags).toContainEqual(['p', pubkey, '', 'creator']);
+    expect(tags.filter((t) => t[0].startsWith('creator:'))).toEqual([]);
+  });
+
+  test('creator with nostr:nprofile id uses the embedded relay as hint', () => {
+    const nprofile = nip19.nprofileEncode({ pubkey, relays: ['wss://relay.example.com'] });
+    const resource = baseResource({
+      creator: [{ type: 'Person', name: 'Jane Doe', id: `nostr:${nprofile}` }],
+    });
+    const result = ambToNostr(resource, {
+      pubkey: 'a'.repeat(64),
+      defaultRelayHint: 'wss://fallback.example.com',
+    });
+    const tags = result.data!.tags;
+    expect(tags).toContainEqual(['p', pubkey, 'wss://relay.example.com', 'creator']);
+    expect(tags.filter((t) => t[0].startsWith('creator:'))).toEqual([]);
+  });
+
+  test('npub id falls back to the configured default relay hint', () => {
+    const npub = nip19.npubEncode(pubkey);
+    const resource = baseResource({
+      creator: [{ type: 'Person', name: 'Jane Doe', id: `nostr:${npub}` }],
+    });
+    const result = ambToNostr(resource, {
+      pubkey: 'a'.repeat(64),
+      defaultRelayHint: 'wss://fallback.example.com',
+    });
+    expect(result.data!.tags).toContainEqual(['p', pubkey, 'wss://fallback.example.com', 'creator']);
+  });
+
+  test('contributor with nostr: id emits p tag with contributor role', () => {
+    const npub = nip19.npubEncode(pubkey);
+    const resource = baseResource({
+      contributor: [{ type: 'Person', name: 'Jane Doe', id: `nostr:${npub}` }],
+    });
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    const tags = result.data!.tags;
+    expect(tags).toContainEqual(['p', pubkey, '', 'contributor']);
+    expect(tags.filter((t) => t[0].startsWith('contributor:'))).toEqual([]);
+  });
+
+  test('legacy nostrPubkey emits only a p tag (never both)', () => {
+    const resource = baseResource({
+      creator: [{ type: 'Person', name: 'Jane Doe', nostrPubkey: pubkey }],
+    });
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    const tags = result.data!.tags;
+    expect(tags).toContainEqual(['p', pubkey, '', 'creator']);
+    expect(tags.filter((t) => t[0].startsWith('creator:'))).toEqual([]);
+  });
+
+  test('creator with external id keeps flattened tags and gets no p tag', () => {
+    const resource = baseResource({
+      creator: [{ type: 'Person', name: 'Jane Doe', id: 'https://orcid.org/0000-0002-3064-147X' }],
+    });
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    const tags = result.data!.tags;
+    expect(tags).toContainEqual(['creator:id', 'https://orcid.org/0000-0002-3064-147X']);
+    expect(tags.filter((t) => t[0] === 'p')).toEqual([]);
+  });
+
+  test('undecodable nostr: id falls back to flattened tags with a warning', () => {
+    const resource = baseResource({
+      creator: [{ type: 'Person', name: 'Jane Doe', id: 'nostr:npub1invalid' }],
+    });
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    expect(result.success).toBe(true);
+    const tags = result.data!.tags;
+    expect(tags.filter((t) => t[0] === 'p')).toEqual([]);
+    expect(tags).toContainEqual(['creator:id', 'nostr:npub1invalid']);
+    expect(result.warnings?.some((w) => w.includes('could not be decoded'))).toBe(true);
+  });
+});
+
+describe('nostr: creator id round-trip', () => {
+  test('identity survives AMB -> event -> AMB as a nostr: id', () => {
+    const pubkey = 'c'.repeat(64);
+    const npub = nip19.npubEncode(pubkey);
+    const resource: any = {
+      '@context': ['https://w3id.org/kim/amb/context.jsonld'],
+      id: 'https://example.org/r1',
+      type: ['LearningResource'],
+      name: 'Test',
+      creator: [{ type: 'Person', name: 'Jane Doe', id: `nostr:${npub}` }],
+    };
+
+    const forward = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    expect(forward.success).toBe(true);
+
+    const back = nostrToAmb({ ...forward.data!, kind: 30142 });
+    expect(back.success).toBe(true);
+    const creators = back.data!.creator!;
+    expect(creators).toHaveLength(1);
+    const creator: any = creators[0];
+    expect(creator.type).toBe('Person');
+    // offline reverse conversion falls back to the npub as name
+    expect(creator.name).toBe(npub);
+    // npub input normalizes to nprofile output; same pubkey
+    const decoded = nip19.decode(creator.id.replace('nostr:', ''));
+    expect(decoded.type).toBe('nprofile');
+    expect((decoded.data as any).pubkey).toBe(pubkey);
   });
 });

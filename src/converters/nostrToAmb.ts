@@ -11,6 +11,9 @@ import {
   ConversionErrorCode,
 } from '../types/index.js';
 
+/** Matches an RFC 3986 scheme prefix, i.e. an absolute URI. */
+const URI_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
 /**
  * Convert a Nostr event to AMB metadata
  */
@@ -76,6 +79,24 @@ export function nostrToAmb(
     // C4: content is the preferred source for description
     if (typeof event.content === 'string' && event.content.length > 0) {
       amb.description = event.content;
+    }
+
+    // Non-URI d values (slugs) derive the AMB id as nostr:<naddr> per NIP-AMB.
+    if (typeof amb.id === 'string' && amb.id && !URI_SCHEME.test(amb.id)) {
+      if (event.pubkey) {
+        try {
+          const naddr = nip19.naddrEncode({
+            identifier: amb.id,
+            pubkey: event.pubkey,
+            kind: event.kind,
+          });
+          amb.id = `nostr:${naddr}`;
+        } catch {
+          warnings.push(`d tag "${amb.id}" is not an absolute URI and naddr derivation failed; id kept verbatim`);
+        }
+      } else {
+        warnings.push(`d tag "${amb.id}" is not an absolute URI and the event has no pubkey; id kept verbatim`);
+      }
     }
 
     // Validate required fields
@@ -496,8 +517,10 @@ function reconstructExt(
 
 /**
  * Map ["p", <pubkey>, <hint?>, <role>] tags (role creator|contributor) to
- * AMB person objects { id: "nostr:<nprofile>", type: "Person" }. Persons
- * without a creator/contributor role are ignored.
+ * AMB person objects { name, type: "Person", id: "nostr:<nprofile>" }. Persons
+ * without a creator/contributor role are ignored. The AMB schema requires
+ * `name`, so it falls back to the npub encoding; profile-aware callers
+ * (nostrToAmbWithProfiles) replace it with the kind:0 profile name.
  */
 function applyPersonTags(amb: any, pTags: string[][]): void {
   for (const tag of pTags) {
@@ -508,12 +531,14 @@ function applyPersonTags(amb: any, pTags: string[][]): void {
     const hint = tag[2];
     const relays = hint ? [hint] : [];
     let nprofile: string;
+    let name: string;
     try {
       nprofile = nip19.nprofileEncode({ pubkey, relays });
+      name = nip19.npubEncode(pubkey);
     } catch {
       continue;
     }
-    const person = { id: `nostr:${nprofile}`, type: 'Person' };
+    const person = { name, type: 'Person', id: `nostr:${nprofile}` };
     if (!Array.isArray(amb[role])) amb[role] = [];
     amb[role].push(person);
   }
