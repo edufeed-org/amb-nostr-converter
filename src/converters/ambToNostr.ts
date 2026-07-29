@@ -35,6 +35,22 @@ import {
 const DEFAULT_PUBKEY = '0000000000000000000000000000000000000000000000000000000000000000';
 
 /**
+ * Guard a value that becomes one segment of a colon-delimited ext tag key.
+ * A colon here would produce a key no consumer can segment unambiguously, and
+ * NIP-AMB requires those to be ignored — so emitting one silently loses the
+ * data downstream. Fail at the serializer instead.
+ */
+function assertColonFree(value: string, what: string): void {
+  if (value.includes(':')) {
+    throw new ConversionError(
+      `${what} "${value}" must not contain ':' — a sub-vocabulary belongs in the namespace ` +
+        `(e.g. "org.edufeed.ekw.konfi:zielgruppen"), not as a colon inside a segment`,
+      ConversionErrorCode.INVALID_FORMAT
+    );
+  }
+}
+
+/**
  * Convert AMB learning resource to Nostr educational event
  */
 export function ambToNostr(
@@ -434,9 +450,18 @@ export function ambToNostr(
     // Add extension properties (ext namespace) — symmetric with nostrToAmb reconstruction.
     // Concept facets emit id, prefLabel:<lang>(s), type (order matters for reverse boundary).
     // Scalar facets emit a bare ext:<ns>:<facet> tag per value.
+    //
+    // <ns>, <facet> and the prefLabel language MUST be colon-free: a surplus
+    // colon makes the emitted key ambiguous to parse, and consumers are
+    // required to ignore such keys outright. This serializer is the only
+    // enforcement point on the write side, so it fails rather than emitting a
+    // tag that will be silently dropped downstream. Sub-vocabularies belong in
+    // <ns> (e.g. "org.edufeed.ekw.konfi"), never as a colon inside <facet>.
     if (ambResource.ext) {
       for (const [ns, facets] of Object.entries(ambResource.ext)) {
+        assertColonFree(ns, 'ext namespace');
         for (const [facet, items] of Object.entries(facets)) {
+          assertColonFree(facet, `ext facet in namespace "${ns}"`);
           for (const item of items as Array<any>) {
             if (typeof item === 'string') {
               tags.push(createTag(`ext:${ns}:${facet}`, item));
@@ -444,6 +469,7 @@ export function ambToNostr(
               if (item.id) tags.push(createTag(`ext:${ns}:${facet}:id`, item.id));
               if (item.prefLabel) {
                 for (const [lang, label] of Object.entries(item.prefLabel)) {
+                  assertColonFree(lang, `ext prefLabel language for "${ns}:${facet}"`);
                   tags.push(createTag(`ext:${ns}:${facet}:prefLabel:${lang}`, label as string));
                 }
               }

@@ -27,9 +27,12 @@ export interface Concept {
 }
 
 /**
- * An extension facet value: either controlled-vocabulary concepts or bare scalars.
+ * An extension facet value: controlled-vocabulary concepts, bare scalars, or
+ * both. A facet mixes kinds when an author picks a vocabulary term and types a
+ * custom value into the same field; concepts sort before scalars, matching the
+ * relay's reconstruction.
  */
-export type ExtFacet = Concept[] | string[];
+export type ExtFacet = Array<Concept | string>;
 
 /**
  * Person entity (creator, contributor, etc.)
@@ -150,7 +153,7 @@ export interface AmbLearningResourceBase extends AmbContext {
   // Source/canonical URL
   mainEntityOfPage?: MainEntityOfPage[];
 
-  // Extension properties (ext namespace). Shape: ext[ns][facet] = Concept[] | string[]
+  // Extension properties (ext namespace). Shape: ext[ns][facet] = Array<Concept | string>
   ext?: Record<string, Record<string, ExtFacet>>;
 }
 

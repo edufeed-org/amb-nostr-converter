@@ -16,8 +16,23 @@ describe('EKW ext round-trip', () => {
         ],
         bibleReference: ['Gen 1', 'Ps 104'],
       },
-      '30168:pub1:reli-form': {
+      // Form-emitted ext uses the form's bare d-tag as the namespace. The
+      // 30168 coordinate does not belong in <ns> — the form is identified by
+      // the resource's ["a", "30168:<pub>:<d>", …, "form"] back-ref.
+      'reli-form': {
         fach: [{ id: 'https://example.org/fach/reli', type: 'Concept', prefLabel: { de: 'Religion' } }],
+      },
+      // Sub-vocabularies are their own namespace, not a colon inside <facet>.
+      'org.edufeed.ekw.konfi': {
+        zielgruppen: [{ id: 'https://example.org/zg/1', type: 'Concept', prefLabel: { de: 'Konfis' } }],
+        plainLanguage: ['Leichte Sprache'],
+        // Mixed facet: a vocabulary pick plus the author's own free text in the
+        // same field. Round-tripping it unchanged depends on reconstruction
+        // emitting concepts before scalars.
+        zeitstruktur: [
+          { id: 'https://example.org/zeit/doppelstunde', type: 'Concept', prefLabel: { de: 'Doppelstunde' } },
+          '2 x 90 Min.',
+        ],
       },
     },
   };
@@ -30,6 +45,7 @@ describe('EKW ext round-trip', () => {
     const ext = back.data!.ext!;
     expect(ext.ekw.gradeLevel).toEqual(resource.ext.ekw.gradeLevel);
     expect(ext.ekw.bibleReference).toEqual(['Gen 1', 'Ps 104']);
-    expect(ext['30168:pub1:reli-form'].fach).toEqual(resource.ext['30168:pub1:reli-form'].fach);
+    expect(ext['reli-form'].fach).toEqual(resource.ext['reli-form'].fach);
+    expect(ext['org.edufeed.ekw.konfi']).toEqual(resource.ext['org.edufeed.ekw.konfi']);
   });
 });

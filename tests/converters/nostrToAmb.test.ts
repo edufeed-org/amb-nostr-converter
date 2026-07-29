@@ -424,12 +424,149 @@ describe('ext namespace reconstruction', () => {
     ]);
   });
 
-  test('form-emitted ns keeps the 30168 coordinate', () => {
+  test('form-coordinate ns is non-conforming and ignored', () => {
+    // The 30168 coordinate puts a pubkey inside <ns>, which NIP-AMB forbids —
+    // the form is identified by the ["a", "30168:<pub>:<d>", …, "form"] back-ref
+    // instead. The key is ambiguous to segment, so it must be ignored, not
+    // reinterpreted as a multi-segment namespace.
     const ev = baseEvent([['ext:30168:pub1:formd:fach:id', 'https://example.org/fach/reli']]);
     const result = nostrToAmb(ev);
-    expect(result.data!.ext!['30168:pub1:formd'].fach).toEqual([
+    expect(result.success).toBe(true);
+    expect(result.data!.ext).toBeUndefined();
+    expect(
+      result.warnings?.some((w) => w.includes("ignored non-conforming ext key 'ext:30168:pub1:formd:fach:id'"))
+    ).toBe(true);
+  });
+
+  test('conforming form-emitted ns uses the bare d-tag', () => {
+    const ev = baseEvent([['ext:amb-basic:fach:id', 'https://example.org/fach/reli']]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!['amb-basic'].fach).toEqual([
       { id: 'https://example.org/fach/reli', type: 'Concept' },
     ]);
+  });
+
+  test('surplus-segment konfi keys are ignored, conforming siblings survive', () => {
+    // ext:ekw:konfi:themen:id reads as ns=ekw/facet=konfi left-anchored and
+    // ns=ekw:konfi/facet=themen right-anchored. Both readings shipped in our
+    // own code, so the NIP requires ignoring the key rather than guessing.
+    const ev = baseEvent([
+      ['ext:ekw:konfi:themen:id', 'https://example.org/konfi/gerechtigkeit'],
+      ['ext:ekw:konfi:dimensionen:id', 'https://example.org/konfi/selbstreflexion'],
+      ['ext:ekw:gradeLevel:id', 'https://example.org/grade/5'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.success).toBe(true);
+    expect(Object.keys(result.data!.ext!)).toEqual(['ekw']);
+    expect(Object.keys(result.data!.ext!.ekw)).toEqual(['gradeLevel']);
+    expect(result.data!.ext!['ekw:konfi']).toBeUndefined();
+  });
+
+  test('rejects an unknown or over-long sub, keeps the closed set', () => {
+    const ev = baseEvent([
+      ['ext:ekw:gradeLevel:id', 'https://example.org/grade/5'],
+      ['ext:ekw:gradeLevel:name', 'Klasse 5'],
+      ['ext:ekw:gradeLevel:notAProperty', 'x'],
+      ['ext:ekw:gradeLevel:prefLabel:de:extra', 'x'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!.ekw.gradeLevel).toEqual([
+      { id: 'https://example.org/grade/5', type: 'Concept', name: 'Klasse 5' },
+    ]);
+    expect(result.warnings?.filter((w) => w.startsWith('ignored non-conforming ext key'))).toHaveLength(2);
+  });
+
+  test('conforming reverse-DNS namespace round-trips', () => {
+    const ev = baseEvent([
+      ['ext:org.edufeed.ekw.konfi:zielgruppen:id', 'https://example.org/konfi/zg/1'],
+      ['ext:org.edufeed.ekw.konfi:zielgruppen:prefLabel:de', 'Konfirmandinnen'],
+      ['ext:org.edufeed.ekw.konfi:plainLanguage', 'Leichte Sprache'],
+    ]);
+    const result = nostrToAmb(ev);
+    const konfi = result.data!.ext!['org.edufeed.ekw.konfi'];
+    expect(konfi.zielgruppen).toEqual([
+      { id: 'https://example.org/konfi/zg/1', type: 'Concept', prefLabel: { de: 'Konfirmandinnen' } },
+    ]);
+    expect(konfi.plainLanguage).toEqual(['Leichte Sprache']);
+  });
+
+  test('a mixed facet keeps both its concepts and its free-text scalars', () => {
+    // A Konfi author picks a vocabulary concept AND types a custom value into
+    // the same field, so one facet carries both kinds. Accumulating them under
+    // a single first-tag-wins kind threw one half away — and since the emitter
+    // always writes concepts first, the half lost was always the hand-typed
+    // one. Mirrors nostrlib typesense30142 nostr_amb.go, which concatenates
+    // concept instances then scalars.
+    const ev = baseEvent([
+      ['ext:org.edufeed.ekw.konfi:zeitstruktur:id', 'urn:doppelstunde'],
+      ['ext:org.edufeed.ekw.konfi:zeitstruktur:prefLabel:de', 'Doppelstunde'],
+      ['ext:org.edufeed.ekw.konfi:zeitstruktur:type', 'Concept'],
+      ['ext:org.edufeed.ekw.konfi:zeitstruktur', '2 x 90 Min.'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.success).toBe(true);
+    expect(result.data!.ext!['org.edufeed.ekw.konfi'].zeitstruktur).toEqual([
+      { id: 'urn:doppelstunde', type: 'Concept', prefLabel: { de: 'Doppelstunde' } },
+      '2 x 90 Min.',
+    ]);
+  });
+
+  test('a mixed facet is order-independent — scalar first loses nothing either', () => {
+    const ev = baseEvent([
+      ['ext:ekw:zeitstruktur', '2 x 90 Min.'],
+      ['ext:ekw:zeitstruktur:id', 'urn:doppelstunde'],
+      ['ext:ekw:zeitstruktur:prefLabel:de', 'Doppelstunde'],
+      ['ext:ekw:zeitstruktur:type', 'Concept'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!.ekw.zeitstruktur).toEqual([
+      { id: 'urn:doppelstunde', type: 'Concept', prefLabel: { de: 'Doppelstunde' } },
+      '2 x 90 Min.',
+    ]);
+  });
+
+  test('a mixed facet keeps every concept and every scalar', () => {
+    const ev = baseEvent([
+      ['ext:ekw:themen', 'freitext eins'],
+      ['ext:ekw:themen:id', 'urn:a'],
+      ['ext:ekw:themen:type', 'Concept'],
+      ['ext:ekw:themen', 'freitext zwei'],
+      ['ext:ekw:themen:id', 'urn:b'],
+      ['ext:ekw:themen:type', 'Concept'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!.ekw.themen).toEqual([
+      { id: 'urn:a', type: 'Concept' },
+      { id: 'urn:b', type: 'Concept' },
+      'freitext eins',
+      'freitext zwei',
+    ]);
+  });
+
+  test('an interleaved scalar does not break concept boundary detection', () => {
+    // prefLabel/name attach to the concept opened by the preceding id. A scalar
+    // tag sitting between them must not become that "preceding" entry.
+    const ev = baseEvent([
+      ['ext:ekw:themen:id', 'urn:a'],
+      ['ext:ekw:themen', 'freitext'],
+      ['ext:ekw:themen:prefLabel:de', 'Thema A'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!.ekw.themen).toEqual([
+      { id: 'urn:a', type: 'Concept', prefLabel: { de: 'Thema A' } },
+      'freitext',
+    ]);
+  });
+
+  test('a bare sub-tag with no preceding id does not swallow a scalar', () => {
+    // prefLabel/name attach to the concept opened by the last id. With no id
+    // yet, the scalar half must still survive on its own.
+    const ev = baseEvent([
+      ['ext:ekw:zeitstruktur:prefLabel:de', 'Ohne id'],
+      ['ext:ekw:zeitstruktur', 'nur Text'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!.ekw.zeitstruktur).toEqual(['nur Text']);
   });
 
   test('legacy unprefixed ekw lands in ext.ekw with a warning', () => {
