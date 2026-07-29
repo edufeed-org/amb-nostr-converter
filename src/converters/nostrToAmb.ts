@@ -489,7 +489,14 @@ function reconstructExt(
   if (extTags.length === 0) return undefined;
   const legacyNamespaces = new Set<string>();
   const ignoredKeys = new Set<string>();
-  const work: Record<string, Record<string, { kind: 'concept' | 'scalar'; items: any[] }>> = {};
+  // A facet may legitimately carry both vocabulary concepts and free-text
+  // scalars — the Konfi "pick from the list AND type your own" case. Concepts
+  // and scalars accumulate separately and concatenate at the end (concepts
+  // first, matching nostrlib typesense30142 nostr_amb.go), because a single
+  // list would make the last-entry lookup that prefLabel/name attach to land
+  // on a string. Fixing a facet to one kind on its first tag silently threw
+  // the other half away.
+  const work: Record<string, Record<string, { concepts: any[]; scalars: string[] }>> = {};
 
   for (const tag of extTags) {
     const key = tag[0];
@@ -508,32 +515,30 @@ function reconstructExt(
 
     if (!work[ns]) work[ns] = {};
     if (!work[ns][facet]) {
-      work[ns][facet] = { kind: sub === null ? 'scalar' : 'concept', items: [] };
+      work[ns][facet] = { concepts: [], scalars: [] };
     }
     const f = work[ns][facet];
 
     if (sub === null) {
-      if (f.kind !== 'scalar') continue;
-      if (value) f.items.push(value);
+      if (value) f.scalars.push(value);
     } else {
-      if (f.kind !== 'concept') continue;
       if (sub === 'id') {
-        if (value) f.items.push({ id: value, type: 'Concept' });
+        if (value) f.concepts.push({ id: value, type: 'Concept' });
       } else if (sub === 'type') {
         // presence only; type is always 'Concept'
       } else if (sub === 'name') {
         // Like prefLabel, name attaches to the concept opened by the preceding
         // id. A facet whose entries carry only a name has no id to boundary on,
         // so each tag starts its own entry.
-        const last = f.items[f.items.length - 1];
+        const last = f.concepts[f.concepts.length - 1];
         if (last && last.name === undefined) {
           last.name = value;
         } else if (value) {
-          f.items.push({ name: value, type: 'Concept' });
+          f.concepts.push({ name: value, type: 'Concept' });
         }
       } else if (sub.startsWith('prefLabel:')) {
         const lang = sub.slice('prefLabel:'.length);
-        const last = f.items[f.items.length - 1];
+        const last = f.concepts[f.concepts.length - 1];
         if (last && lang) {
           if (!last.prefLabel) last.prefLabel = {};
           last.prefLabel[lang] = value;
@@ -548,9 +553,11 @@ function reconstructExt(
     if (!nsWork) continue;
     for (const facet of Object.keys(nsWork)) {
       const f = nsWork[facet];
-      if (!f || f.items.length === 0) continue;
+      if (!f) continue;
+      const items = [...f.concepts, ...f.scalars];
+      if (items.length === 0) continue;
       if (!out[ns]) out[ns] = {};
-      out[ns]![facet] = f.items;
+      out[ns]![facet] = items;
     }
   }
 

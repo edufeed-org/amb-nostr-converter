@@ -26,6 +26,13 @@ describe('EKW ext round-trip', () => {
       'org.edufeed.ekw.konfi': {
         zielgruppen: [{ id: 'https://example.org/zg/1', type: 'Concept', prefLabel: { de: 'Konfis' } }],
         plainLanguage: ['Leichte Sprache'],
+        // Mixed facet: a vocabulary pick plus the author's own free text in the
+        // same field. Round-tripping it unchanged depends on reconstruction
+        // emitting concepts before scalars.
+        zeitstruktur: [
+          { id: 'https://example.org/zeit/doppelstunde', type: 'Concept', prefLabel: { de: 'Doppelstunde' } },
+          '2 x 90 Min.',
+        ],
       },
     },
   };
