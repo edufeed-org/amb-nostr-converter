@@ -419,45 +419,61 @@ function reconstructNestedObjects(
 }
 
 /**
- * Split an ext/ekw tag key into { ns, facet, sub, legacy }. Mirrors
- * edufeed-app's parseExtensionTags.parseTagKey. Returns null if not an ext key.
+ * Sub-properties an ext key may carry, per NIP-AMB. Anything else means the
+ * key has a surplus segment.
+ */
+function isValidExtSub(sub: string): boolean {
+  if (sub === 'id' || sub === 'type' || sub === 'name') return true;
+  if (!sub.startsWith('prefLabel:')) return false;
+  const lang = sub.slice('prefLabel:'.length);
+  return lang.length > 0 && !lang.includes(':');
+}
+
+/**
+ * Split an ext/ekw tag key into { ns, facet, sub, legacy }, parsing
+ * left-anchored with the fixed arity NIP-AMB defines:
+ *
+ *   ext-key = "ext" ":" ns ":" facet [ ":" sub ]
+ *   sub     = "id" / "type" / "name" / "prefLabel" ":" lang
+ *
+ * `<ns>` and `<facet>` MUST NOT contain ':'; `sub` is null for a scalar facet.
+ * The unprefixed `ekw:<facet>[:<sub>]` shape is accepted as acknowledged legacy
+ * and reported via `legacy`.
+ *
+ * Returns null for any key outside the grammar. A surplus segment makes the
+ * split ambiguous — `ext:ekw:konfi:themen:id` reads as ns=ekw/facet=konfi
+ * left-anchored and ns=ekw:konfi/facet=themen right-anchored, and our own
+ * implementations picked different answers for the same bytes — so the NIP
+ * requires consumers to ignore such keys rather than guess at a segmentation.
  */
 function parseExtKey(
   key: string
 ): { ns: string; facet: string; sub: string | null; legacy: boolean } | null {
   if (!key) return null;
   const segments = key.split(':');
-  if (segments.length < 2) return null;
 
-  let body: string[];
+  // Prefixed keys drop the leading "ext"; legacy unprefixed keys use segment 0
+  // as the namespace directly.
+  let offset: number;
   let legacy = false;
   if (segments[0] === 'ext') {
-    body = segments.slice(1);
+    offset = 1;
   } else if (segments[0] === 'ekw') {
-    body = segments; // ns = 'ekw'
+    offset = 0;
     legacy = true;
   } else {
     return null;
   }
-  if (body.length < 2) return null;
 
-  let sub: string | null = null;
-  let tail = body.length;
-  const lastSeg = body[body.length - 1];
-  const prevSeg = body[body.length - 2];
-  if (prevSeg === 'prefLabel') {
-    if (!lastSeg) return null;
-    sub = `prefLabel:${lastSeg}`;
-    tail = body.length - 2;
-  } else if (lastSeg === 'id' || lastSeg === 'type') {
-    sub = lastSeg;
-    tail = body.length - 1;
-  }
-  if (tail < 2) return null;
-
-  const facet = body[tail - 1];
-  const ns = body.slice(0, tail - 1).join(':');
+  const ns = segments[offset];
+  const facet = segments[offset + 1];
   if (!ns || !facet) return null;
+
+  const rest = segments.slice(offset + 2);
+  if (rest.length === 0) return { ns, facet, sub: null, legacy };
+
+  const sub = rest.join(':');
+  if (!isValidExtSub(sub)) return null;
   return { ns, facet, sub, legacy };
 }
 
@@ -472,13 +488,20 @@ function reconstructExt(
 ): Record<string, Record<string, any>> | undefined {
   if (extTags.length === 0) return undefined;
   const legacyNamespaces = new Set<string>();
+  const ignoredKeys = new Set<string>();
   const work: Record<string, Record<string, { kind: 'concept' | 'scalar'; items: any[] }>> = {};
 
   for (const tag of extTags) {
     const key = tag[0];
     if (typeof key !== 'string') continue;
     const parsed = parseExtKey(key);
-    if (!parsed) continue;
+    if (!parsed) {
+      // Outside the NIP-AMB grammar. Ignoring is normative — the segmentation
+      // is ambiguous — but it is silent data loss from the caller's side, so
+      // surface it rather than dropping it quietly.
+      ignoredKeys.add(key);
+      continue;
+    }
     const { ns, facet, sub, legacy } = parsed;
     if (legacy) legacyNamespaces.add(ns);
     const value = typeof tag[1] === 'string' ? tag[1] : '';
@@ -498,6 +521,16 @@ function reconstructExt(
         if (value) f.items.push({ id: value, type: 'Concept' });
       } else if (sub === 'type') {
         // presence only; type is always 'Concept'
+      } else if (sub === 'name') {
+        // Like prefLabel, name attaches to the concept opened by the preceding
+        // id. A facet whose entries carry only a name has no id to boundary on,
+        // so each tag starts its own entry.
+        const last = f.items[f.items.length - 1];
+        if (last && last.name === undefined) {
+          last.name = value;
+        } else if (value) {
+          f.items.push({ name: value, type: 'Concept' });
+        }
       } else if (sub.startsWith('prefLabel:')) {
         const lang = sub.slice('prefLabel:'.length);
         const last = f.items[f.items.length - 1];
@@ -523,6 +556,13 @@ function reconstructExt(
 
   for (const ns of legacyNamespaces) {
     warnings.push(`legacy unprefixed ext namespace '${ns}'; producers should migrate to 'ext:${ns}:'`);
+  }
+
+  for (const key of ignoredKeys) {
+    warnings.push(
+      `ignored non-conforming ext key '${key}'; NIP-AMB requires ext:<ns>:<facet>[:<sub>] ` +
+        `with colon-free <ns>/<facet> and <sub> in {id, type, name, prefLabel:<lang>}`
+    );
   }
 
   return Object.keys(out).length > 0 ? out : undefined;

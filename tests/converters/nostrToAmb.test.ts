@@ -424,12 +424,70 @@ describe('ext namespace reconstruction', () => {
     ]);
   });
 
-  test('form-emitted ns keeps the 30168 coordinate', () => {
+  test('form-coordinate ns is non-conforming and ignored', () => {
+    // The 30168 coordinate puts a pubkey inside <ns>, which NIP-AMB forbids —
+    // the form is identified by the ["a", "30168:<pub>:<d>", …, "form"] back-ref
+    // instead. The key is ambiguous to segment, so it must be ignored, not
+    // reinterpreted as a multi-segment namespace.
     const ev = baseEvent([['ext:30168:pub1:formd:fach:id', 'https://example.org/fach/reli']]);
     const result = nostrToAmb(ev);
-    expect(result.data!.ext!['30168:pub1:formd'].fach).toEqual([
+    expect(result.success).toBe(true);
+    expect(result.data!.ext).toBeUndefined();
+    expect(
+      result.warnings?.some((w) => w.includes("ignored non-conforming ext key 'ext:30168:pub1:formd:fach:id'"))
+    ).toBe(true);
+  });
+
+  test('conforming form-emitted ns uses the bare d-tag', () => {
+    const ev = baseEvent([['ext:amb-basic:fach:id', 'https://example.org/fach/reli']]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!['amb-basic'].fach).toEqual([
       { id: 'https://example.org/fach/reli', type: 'Concept' },
     ]);
+  });
+
+  test('surplus-segment konfi keys are ignored, conforming siblings survive', () => {
+    // ext:ekw:konfi:themen:id reads as ns=ekw/facet=konfi left-anchored and
+    // ns=ekw:konfi/facet=themen right-anchored. Both readings shipped in our
+    // own code, so the NIP requires ignoring the key rather than guessing.
+    const ev = baseEvent([
+      ['ext:ekw:konfi:themen:id', 'https://example.org/konfi/gerechtigkeit'],
+      ['ext:ekw:konfi:dimensionen:id', 'https://example.org/konfi/selbstreflexion'],
+      ['ext:ekw:gradeLevel:id', 'https://example.org/grade/5'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.success).toBe(true);
+    expect(Object.keys(result.data!.ext!)).toEqual(['ekw']);
+    expect(Object.keys(result.data!.ext!.ekw)).toEqual(['gradeLevel']);
+    expect(result.data!.ext!['ekw:konfi']).toBeUndefined();
+  });
+
+  test('rejects an unknown or over-long sub, keeps the closed set', () => {
+    const ev = baseEvent([
+      ['ext:ekw:gradeLevel:id', 'https://example.org/grade/5'],
+      ['ext:ekw:gradeLevel:name', 'Klasse 5'],
+      ['ext:ekw:gradeLevel:notAProperty', 'x'],
+      ['ext:ekw:gradeLevel:prefLabel:de:extra', 'x'],
+    ]);
+    const result = nostrToAmb(ev);
+    expect(result.data!.ext!.ekw.gradeLevel).toEqual([
+      { id: 'https://example.org/grade/5', type: 'Concept', name: 'Klasse 5' },
+    ]);
+    expect(result.warnings?.filter((w) => w.startsWith('ignored non-conforming ext key'))).toHaveLength(2);
+  });
+
+  test('conforming reverse-DNS namespace round-trips', () => {
+    const ev = baseEvent([
+      ['ext:org.edufeed.ekw.konfi:zielgruppen:id', 'https://example.org/konfi/zg/1'],
+      ['ext:org.edufeed.ekw.konfi:zielgruppen:prefLabel:de', 'Konfirmandinnen'],
+      ['ext:org.edufeed.ekw.konfi:plainLanguage', 'Leichte Sprache'],
+    ]);
+    const result = nostrToAmb(ev);
+    const konfi = result.data!.ext!['org.edufeed.ekw.konfi'];
+    expect(konfi.zielgruppen).toEqual([
+      { id: 'https://example.org/konfi/zg/1', type: 'Concept', prefLabel: { de: 'Konfirmandinnen' } },
+    ]);
+    expect(konfi.plainLanguage).toEqual(['Leichte Sprache']);
   });
 
   test('legacy unprefixed ekw lands in ext.ekw with a warning', () => {

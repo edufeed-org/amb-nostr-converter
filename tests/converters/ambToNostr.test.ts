@@ -403,6 +403,59 @@ describe('ext namespace emission', () => {
       ['ext:ekw:bibleReference', 'Ps 23'],
     ]);
   });
+
+  // This serializer is the only write-side enforcement point for the ext
+  // grammar. A colon in a facet key produces ext:ekw:konfi:zielgruppen:id,
+  // which conformant consumers must ignore — so it has to fail here rather
+  // than ship a tag that silently vanishes downstream.
+  test('rejects a colon-bearing facet key', () => {
+    const resource: any = {
+      '@context': ['https://w3id.org/kim/amb/context.jsonld'],
+      id: 'https://example.org/r1',
+      type: ['LearningResource'],
+      name: 'Test',
+      ext: { ekw: { 'konfi:zielgruppen': [{ id: 'https://example.org/zg/1', type: 'Concept' }] } },
+    };
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toMatch(/must not contain ':'/);
+  });
+
+  test('rejects a colon-bearing namespace', () => {
+    const resource: any = {
+      '@context': ['https://w3id.org/kim/amb/context.jsonld'],
+      id: 'https://example.org/r1',
+      type: ['LearningResource'],
+      name: 'Test',
+      ext: { 'ekw:konfi': { zielgruppen: ['x'] } },
+    };
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toMatch(/must not contain ':'/);
+  });
+
+  test('accepts a reverse-DNS namespace for the same data', () => {
+    const resource: any = {
+      '@context': ['https://w3id.org/kim/amb/context.jsonld'],
+      id: 'https://example.org/r1',
+      type: ['LearningResource'],
+      name: 'Test',
+      ext: {
+        'org.edufeed.ekw.konfi': {
+          zielgruppen: [{ id: 'https://example.org/zg/1', type: 'Concept' }],
+          plainLanguage: ['Leichte Sprache'],
+        },
+      },
+    };
+    const result = ambToNostr(resource, { pubkey: 'a'.repeat(64) });
+    expect(result.success).toBe(true);
+    const konfi = result.data!.tags.filter((t) => t[0].startsWith('ext:org.edufeed.ekw.konfi'));
+    expect(konfi).toEqual([
+      ['ext:org.edufeed.ekw.konfi:zielgruppen:id', 'https://example.org/zg/1'],
+      ['ext:org.edufeed.ekw.konfi:zielgruppen:type', 'Concept'],
+      ['ext:org.edufeed.ekw.konfi:plainLanguage', 'Leichte Sprache'],
+    ]);
+  });
 });
 
 describe('Nostr-native creator identities', () => {
